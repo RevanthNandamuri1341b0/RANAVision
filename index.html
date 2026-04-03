@@ -1,0 +1,1327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RANAVision — Battle Intelligence. Global Vision.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet"/>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --black: #080808;
+    --red: #FF2020;
+    --grey: #3A3A3A;
+    --white: #E8E8E8;
+    --gold: #FFD700;
+    --orange: #FF8C00;
+  }
+
+  body {
+    background: var(--black);
+    color: var(--white);
+    font-family: 'Courier Prime', monospace;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── TOP BAR ── */
+  #topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    height: 56px;
+    background: #0f0f0f;
+    border-bottom: 1px solid #222;
+    flex-shrink: 0;
+    z-index: 100;
+  }
+
+  #logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    letter-spacing: 2px;
+    user-select: none;
+  }
+  #logo .rana { color: var(--red); }
+  #logo .vision { color: var(--white); }
+  #logo .tagline {
+    font-family: 'Courier Prime', monospace;
+    font-size: 10px;
+    color: #666;
+    letter-spacing: 1px;
+    display: block;
+    margin-top: -4px;
+  }
+
+  #mode-toggle { display: flex; gap: 8px; }
+
+  .mode-btn {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 14px;
+    letter-spacing: 1.5px;
+    padding: 6px 18px;
+    border: 1px solid #444;
+    background: transparent;
+    color: #888;
+    cursor: pointer;
+    transition: all 0.2s;
+    clip-path: polygon(6px 0%, 100% 0%, calc(100% - 6px) 100%, 0% 100%);
+  }
+  .mode-btn:hover { border-color: var(--red); color: var(--white); }
+  .mode-btn.active { background: var(--red); border-color: var(--red); color: var(--white); }
+
+  /* ── MAP CONTAINER ── */
+  #map-container {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+
+  #map-svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .country {
+    stroke: #1a1a1a;
+    stroke-width: 0.5;
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .country:hover { filter: brightness(1.5); }
+
+  .conflict-country {
+    animation: conflictPulse 2s ease-in-out infinite;
+  }
+
+  @keyframes conflictPulse {
+    0%, 100% { filter: drop-shadow(0 0 4px #FF2020) brightness(1.2); }
+    50% { filter: drop-shadow(0 0 12px #FF2020) drop-shadow(0 0 20px #FF2020) brightness(1.5); }
+  }
+
+  /* ── TOOLTIP ── */
+  #tooltip {
+    position: fixed;
+    background: #111;
+    border: 1px solid var(--red);
+    padding: 10px 14px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    max-width: 240px;
+    z-index: 500;
+    font-size: 12px;
+  }
+  #tooltip.visible { opacity: 1; }
+  #tooltip img { width: 32px; margin-bottom: 6px; display: block; }
+  #tooltip .tt-name { font-family: 'Bebas Neue', sans-serif; font-size: 16px; color: var(--red); }
+  #tooltip .tt-summary { color: #aaa; margin-top: 4px; line-height: 1.4; }
+
+  /* ── CONFLICT DRAWER ── */
+  #conflict-drawer {
+    position: fixed;
+    top: 56px;
+    right: -420px;
+    width: 380px;
+    height: calc(100vh - 56px);
+    background: #0d0d0d;
+    border-left: 2px solid var(--red);
+    overflow-y: auto;
+    transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 400;
+    padding: 20px;
+  }
+  #conflict-drawer.open { right: 0; }
+
+  #drawer-close {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    background: none;
+    border: 1px solid #444;
+    color: #888;
+    cursor: pointer;
+    font-size: 16px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+  #drawer-close:hover { border-color: var(--red); color: var(--red); }
+
+  #drawer-flag { width: 64px; margin-bottom: 12px; border: 1px solid #333; }
+  #drawer-name { font-family: 'Bebas Neue', sans-serif; font-size: 26px; color: var(--red); line-height: 1; margin-bottom: 8px; padding-right: 32px; }
+
+  .drawer-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .meta-tag {
+    font-size: 11px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    padding: 3px 8px;
+    color: #888;
+  }
+  .meta-tag span { color: var(--white); }
+
+  #drawer-desc { font-size: 13px; color: #bbb; line-height: 1.6; margin-bottom: 16px; }
+
+  .drawer-section-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 14px;
+    letter-spacing: 1px;
+    color: #555;
+    margin-bottom: 6px;
+  }
+
+  #drawer-parties { font-size: 12px; color: #aaa; margin-bottom: 16px; line-height: 1.5; }
+
+  .wiki-btn {
+    display: inline-block;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 14px;
+    letter-spacing: 1px;
+    padding: 8px 20px;
+    border: 1px solid var(--red);
+    color: var(--red);
+    text-decoration: none;
+    transition: all 0.2s;
+    clip-path: polygon(6px 0%, 100% 0%, calc(100% - 6px) 100%, 0% 100%);
+  }
+  .wiki-btn:hover { background: var(--red); color: var(--white); }
+
+  /* ── ARSENAL OVERLAY ── */
+  #arsenal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.92);
+    z-index: 600;
+    display: none;
+    overflow-y: auto;
+    padding: 20px;
+  }
+  #arsenal-overlay.open { display: block; }
+
+  #arsenal-card {
+    max-width: 900px;
+    margin: 20px auto;
+    background: #0d0d0d;
+    border: 1px solid #333;
+    padding: 28px;
+    position: relative;
+  }
+
+  #arsenal-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: none;
+    border: 1px solid #444;
+    color: #888;
+    cursor: pointer;
+    font-size: 18px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+  #arsenal-close:hover { border-color: var(--red); color: var(--red); }
+
+  #arsenal-header { display: flex; align-items: center; gap: 20px; margin-bottom: 20px; }
+  #arsenal-flag { width: 80px; border: 1px solid #333; }
+  #arsenal-country-name { font-family: 'Bebas Neue', sans-serif; font-size: 36px; color: var(--white); }
+  .tier-badge {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 13px;
+    padding: 4px 12px;
+    margin-top: 4px;
+    display: inline-block;
+    letter-spacing: 1px;
+  }
+  .tier-1 { background: var(--gold); color: #000; }
+  .tier-2 { background: var(--orange); color: #000; }
+  .tier-3 { background: #5A5A5A; color: var(--white); }
+
+  /* Weapon tabs */
+  #weapon-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 16px; border-bottom: 1px solid #222; padding-bottom: 12px; }
+
+  .weapon-tab {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 13px;
+    letter-spacing: 1px;
+    padding: 5px 14px;
+    border: 1px solid #333;
+    background: transparent;
+    color: #666;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .weapon-tab:hover { color: var(--white); border-color: #555; }
+  .weapon-tab.active { background: var(--grey); color: var(--white); border-color: var(--grey); }
+
+  #weapon-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+  }
+
+  .weapon-card {
+    background: #111;
+    border: 1px solid #222;
+    padding: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .weapon-card:hover { border-color: var(--red); background: #161616; }
+  .weapon-card .wc-name { font-family: 'Bebas Neue', sans-serif; font-size: 16px; color: var(--white); margin-bottom: 4px; }
+  .weapon-card .wc-type { font-size: 10px; color: var(--red); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px; }
+  .weapon-card .wc-desc { font-size: 11px; color: #777; line-height: 1.4; }
+
+  .no-data { color: #444; font-size: 13px; text-align: center; padding: 30px; }
+
+  /* ── WEAPON HERO ── */
+  #weapon-hero {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.95);
+    z-index: 800;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  #weapon-hero.open { display: flex; }
+
+  #hero-card {
+    background: #0d0d0d;
+    border: 1px solid var(--red);
+    box-shadow: 0 0 30px rgba(255,32,32,0.3), 0 0 60px rgba(255,32,32,0.1);
+    padding: 30px;
+    max-width: 560px;
+    width: 100%;
+    position: relative;
+    animation: heroIn 0.25s ease-out;
+  }
+  @keyframes heroIn {
+    from { opacity: 0; transform: scale(0.92); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  #hero-close {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    background: none;
+    border: 1px solid var(--red);
+    color: var(--red);
+    cursor: pointer;
+    font-size: 18px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+  #hero-close:hover { background: var(--red); color: var(--white); }
+
+  #hero-type { font-size: 11px; color: var(--red); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 6px; }
+  #hero-name { font-family: 'Bebas Neue', sans-serif; font-size: 32px; color: var(--white); margin-bottom: 10px; padding-right: 36px; }
+  #hero-desc { font-size: 13px; color: #aaa; line-height: 1.6; margin-bottom: 20px; }
+
+  #hero-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    border-top: 1px solid #222;
+    padding-top: 16px;
+  }
+  .stat-item { background: #111; padding: 10px 12px; border: 1px solid #1e1e1e; }
+  .stat-key { font-size: 10px; color: #555; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
+  .stat-val { font-size: 15px; color: var(--white); font-weight: 700; }
+
+  /* Legend */
+  #map-legend {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    background: rgba(13,13,13,0.9);
+    border: 1px solid #333;
+    padding: 12px 16px;
+    font-size: 12px;
+    z-index: 200;
+    display: none;
+  }
+  #map-legend.visible { display: block; }
+  .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .legend-item:last-child { margin-bottom: 0; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+
+  /* Mobile */
+  @media (max-width: 768px) {
+    #conflict-drawer { width: 100%; right: -100%; top: auto; bottom: -60vh; height: 60vh; border-left: none; border-top: 2px solid var(--red); }
+    #conflict-drawer.open { right: 0; bottom: 0; }
+    #arsenal-card { padding: 16px; }
+    #weapon-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+    #logo .tagline { display: none; }
+    .mode-btn { font-size: 12px; padding: 5px 12px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <div id="logo">
+    <span class="rana">RANA</span><span class="vision">Vision</span>
+    <span class="tagline">BATTLE INTELLIGENCE. GLOBAL VISION.</span>
+  </div>
+  <div id="mode-toggle">
+    <button class="mode-btn active" id="btn-conflict" onclick="setMode('conflict')">CONFLICT MAP</button>
+    <button class="mode-btn" id="btn-arsenal" onclick="setMode('arsenal')">ARSENAL MAP</button>
+  </div>
+</div>
+
+<!-- MAP -->
+<div id="map-container">
+  <svg id="map-svg"></svg>
+</div>
+
+<!-- TOOLTIP -->
+<div id="tooltip">
+  <img id="tt-flag" src="" alt=""/>
+  <div class="tt-name" id="tt-name"></div>
+  <div class="tt-summary" id="tt-summary"></div>
+</div>
+
+<!-- CONFLICT DRAWER -->
+<div id="conflict-drawer">
+  <button id="drawer-close" onclick="closeDrawer()">✕</button>
+  <img id="drawer-flag" src="" alt=""/>
+  <div id="drawer-name"></div>
+  <div class="drawer-meta" id="drawer-meta"></div>
+  <div id="drawer-desc"></div>
+  <div class="drawer-section-title">PARTIES INVOLVED</div>
+  <div id="drawer-parties"></div>
+  <br/>
+  <a class="wiki-btn" id="drawer-wiki" href="#" target="_blank" rel="noopener">WIKIPEDIA ↗</a>
+</div>
+
+<!-- ARSENAL OVERLAY -->
+<div id="arsenal-overlay" onclick="handleOverlayClick(event)">
+  <div id="arsenal-card">
+    <button id="arsenal-close" onclick="closeArsenal()">✕</button>
+    <div id="arsenal-header">
+      <img id="arsenal-flag" src="" alt=""/>
+      <div>
+        <div id="arsenal-country-name"></div>
+        <span id="arsenal-tier-badge" class="tier-badge"></span>
+      </div>
+    </div>
+    <div id="weapon-tabs"></div>
+    <div id="weapon-grid"></div>
+  </div>
+</div>
+
+<!-- WEAPON HERO -->
+<div id="weapon-hero" onclick="handleHeroBackdrop(event)">
+  <div id="hero-card">
+    <button id="hero-close" onclick="closeHero()">✕</button>
+    <div id="hero-type"></div>
+    <div id="hero-name"></div>
+    <div id="hero-desc"></div>
+    <div id="hero-stats"></div>
+  </div>
+</div>
+
+<!-- LEGEND -->
+<div id="map-legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--gold)"></div> Tier 1 — Global Superpower</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div> Tier 2 — Regional Power</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#5A5A5A"></div> Tier 3 — Emerging Military</div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+// DATA — CONFLICTS
+// ═══════════════════════════════════════════
+const CONFLICTS = [
+  { id:'ua', country:'UA', name:'Russia–Ukraine War', summary:'Full-scale Russian invasion of Ukraine ongoing since Feb 2022.', description:'Russia launched a full-scale invasion of Ukraine on 24 February 2022, the largest armed conflict in Europe since World War II. Fighting spans eastern and southern Ukraine with massive casualties on both sides and widespread infrastructure destruction.', parties:'Russia vs. Ukraine (backed by NATO allies)', startYear:2022, wikipediaUrl:'https://en.wikipedia.org/wiki/Russian_invasion_of_Ukraine' },
+  { id:'ps', country:'PS', name:'Gaza–Israel Conflict', summary:'Intense military operations in Gaza following Hamas attack in Oct 2023.', description:'Following the Hamas terrorist attacks of 7 October 2023 that killed ~1,200 Israelis, Israel launched a major military campaign in the Gaza Strip. The conflict has caused severe humanitarian crisis with tens of thousands of casualties.', parties:'Israel (IDF) vs. Hamas, Islamic Jihad', startYear:2023, wikipediaUrl:'https://en.wikipedia.org/wiki/2023_Hamas-led_attack_on_Israel' },
+  { id:'sd', country:'SD', name:'Sudan Civil War', summary:'War between Sudanese Armed Forces and RSF paramilitaries.', description:'Since April 2023, the Sudanese Armed Forces (SAF) and the Rapid Support Forces (RSF) have been engaged in a devastating civil war. The conflict has triggered one of the world\'s largest humanitarian crises, with millions displaced.', parties:'Sudanese Armed Forces vs. Rapid Support Forces (RSF)', startYear:2023, wikipediaUrl:'https://en.wikipedia.org/wiki/2023_Sudanese_civil_war' },
+  { id:'mm', country:'MM', name:'Myanmar Civil War', summary:'Military junta vs. resistance forces after 2021 coup.', description:'Following the February 2021 coup by the Tatmadaw (military), Myanmar descended into civil war. The People\'s Defence Force and ethnic armed groups control large territories, while the junta faces widespread resistance across the country.', parties:'Military Junta (SAC) vs. PDF, Ethnic Armed Organisations', startYear:2021, wikipediaUrl:'https://en.wikipedia.org/wiki/Myanmar_civil_war_(2021–present)' },
+  { id:'ye', country:'YE', name:'Yemen Civil War', summary:'Multi-sided conflict involving Houthis, government, and Saudi coalition.', description:'Yemen\'s civil war began in 2014 when Houthi forces seized the capital Sanaa. A Saudi-led coalition intervened in 2015 to restore the government. The Houthis have since launched missile and drone attacks on Saudi Arabia and ships in the Red Sea.', parties:'Houthis vs. Saudi-led Coalition, Yemeni Government', startYear:2014, wikipediaUrl:'https://en.wikipedia.org/wiki/Yemeni_civil_war_(2014–present)' },
+  { id:'et', country:'ET', name:'Ethiopia Conflicts', summary:'Ongoing regional insurgencies in Amhara and Oromia.', description:'Though the Tigray War ended in late 2022, Ethiopia faces new conflicts. Armed conflict in the Amhara region between federal forces and Fano militias, and ongoing Oromo Liberation Army insurgency continue to destabilize the country.', parties:'Ethiopian Federal Forces vs. Fano Militia, OLA', startYear:2023, wikipediaUrl:'https://en.wikipedia.org/wiki/Amhara_conflict' },
+  { id:'ht', country:'HT', name:'Haiti Gang Violence', summary:'Gang control covers majority of Port-au-Prince amid state collapse.', description:'Haitian gangs, primarily the G9 coalition led by Jimmy Chérizier, control large swaths of Port-au-Prince. The state has effectively collapsed following President Moïse\'s assassination. A Kenyan-led multinational security force deployed in 2024.', parties:'Government vs. G9 and Allied Gangs', startYear:2021, wikipediaUrl:'https://en.wikipedia.org/wiki/2021%E2%80%93present_Haitian_crisis' },
+  { id:'ml', country:'ML', name:'Mali Insurgency', summary:'Jihadist insurgency by JNIM and ISGS across the Sahel.', description:'Mali faces a severe jihadist insurgency by Jamaat Nusrat al-Islam wal-Muslimin (JNIM) and Islamic State in the Greater Sahara (ISGS). The military junta expelled French forces and now relies on Wagner Group/Africa Corps mercenaries.', parties:'Mali Military Junta + Wagner vs. JNIM, ISGS', startYear:2012, wikipediaUrl:'https://en.wikipedia.org/wiki/Northern_Mali_conflict' },
+  { id:'ne', country:'NE', name:'Sahel Crisis (Niger)', summary:'Post-coup instability and jihadist activity in Niger.', description:'Following the July 2023 coup that ousted President Bazoum, Niger expelled French troops and joined a military bloc with Mali and Burkina Faso. Jihadist groups have intensified attacks, and the country faces international sanctions.', parties:'Military Junta vs. JNIM, ISGS, Western sanctions', startYear:2023, wikipediaUrl:'https://en.wikipedia.org/wiki/2023_Nigerien_coup_d%27%C3%A9tat' },
+  { id:'so', country:'SO', name:'Somalia — Al-Shabaab', summary:'Al-Shabaab controls large rural areas and launches urban attacks.', description:'Al-Shabaab, an Al-Qaeda affiliate, continues to hold significant territory in southern Somalia and carries out devastating bombings and attacks. The Somali National Army, supported by African Union forces, continues offensive operations against them.', parties:'Somali Government + ATMIS vs. Al-Shabaab', startYear:2006, wikipediaUrl:'https://en.wikipedia.org/wiki/Al-Shabaab_(militant_group)' },
+  { id:'cd', country:'CD', name:'DRC — M23 Conflict', summary:'M23 rebels backed by Rwanda seize eastern DRC.', description:'M23 rebels, widely believed to be backed by Rwanda, have captured major cities in eastern DRC including Goma in 2025. The conflict involves dozens of armed groups and has caused the world\'s largest internal displacement crisis.', parties:'DRC Government + SADC forces vs. M23/Rwanda', startYear:2022, wikipediaUrl:'https://en.wikipedia.org/wiki/M23_rebellion_(2022%E2%80%93present)' },
+  { id:'az', country:'AZ', name:'Nagorno-Karabakh Aftermath', summary:'Azerbaijan controls Karabakh; 100k Armenians fled in 2023.', description:'In September 2023, Azerbaijan launched a 24-hour military operation capturing the entirety of Nagorno-Karabakh. Over 100,000 ethnic Armenians fled. The region is now under Azerbaijani control, raising concerns about remaining Armenians.', parties:'Azerbaijan vs. Ethnic Armenian Forces (concluded 2023)', startYear:2020, wikipediaUrl:'https://en.wikipedia.org/wiki/2023_Azerbaijani_offensive_in_Nagorno-Karabakh' },
+  { id:'sy', country:'SY', name:'Syrian Civil War', summary:'Assad regime fell Dec 2024; HTS controls Damascus.', description:'After 13 years of civil war, Hayat Tahrir al-Sham (HTS) and allied factions launched a rapid offensive in late 2024, capturing Damascus in December 2024. Assad fled to Russia. Syria now faces a complex transition with multiple armed factions.', parties:'HTS + Allied Factions vs. Assad Remnants, ISIS, Kurds', startYear:2011, wikipediaUrl:'https://en.wikipedia.org/wiki/Syrian_civil_war' },
+  { id:'iq', country:'IQ', name:'Iraq — ISIS Remnants', summary:'ISIS remnants carry out guerrilla attacks in Iraq.', description:'Though the ISIS territorial caliphate was defeated in 2017, ISIS continues to operate as an insurgent group in remote areas of Iraq, carrying out hit-and-run attacks, assassinations, and bombings targeting security forces.', parties:'Iraqi Security Forces + PMF vs. ISIS remnants', startYear:2013, wikipediaUrl:'https://en.wikipedia.org/wiki/War_in_Iraq_(2013%E2%80%932017)' },
+  { id:'af', country:'AF', name:'Afghanistan — Taliban Rule', summary:'Taliban government faces ISIS-K attacks and internal tensions.', description:'The Taliban retook control of Afghanistan in August 2021 following the US withdrawal. The country now faces severe humanitarian crisis, suppression of women\'s rights, and ongoing attacks by ISIS-Khorasan Province (ISIS-K) targeting civilians and Taliban forces.', parties:'Taliban Government vs. ISIS-K, NRF resistance', startYear:2021, wikipediaUrl:'https://en.wikipedia.org/wiki/Islamic_Emirate_of_Afghanistan' },
+  { id:'pk', country:'PK', name:'Pakistan — TTP Insurgency', summary:'Tehrik-i-Taliban Pakistan attacks intensify across KP and Balochistan.', description:'The Tehrik-i-Taliban Pakistan (TTP) has dramatically increased attacks on Pakistani security forces since 2022, particularly in Khyber Pakhtunkhwa and Balochistan provinces. Pakistan has launched cross-border strikes into Afghanistan targeting TTP bases.', parties:'Pakistan Security Forces vs. TTP (Pakistani Taliban)', startYear:2007, wikipediaUrl:'https://en.wikipedia.org/wiki/Tehrik-i-Taliban_Pakistan' },
+  { id:'xk', country:'RS', name:'Kosovo Tensions', summary:'Serbia–Kosovo relations remain volatile; clashes at border.', description:'Relations between Serbia and Kosovo remain highly volatile. Major incidents in 2023 included an armed attack by Serbian gunmen in northern Kosovo. Both sides maintain military postures and diplomatic disputes continue over Kosovo\'s independence.', parties:'Kosovo vs. Serbia, Serbian-backed groups', startYear:2022, wikipediaUrl:'https://en.wikipedia.org/wiki/Kosovo%E2%80%93Serbia_relations' },
+  { id:'tw', country:'CN', name:'Taiwan Strait Tensions', summary:'China escalates military exercises around Taiwan.', description:'China has significantly escalated military exercises and incursions into Taiwan\'s Air Defence Identification Zone. The PLA regularly conducts large-scale exercises simulating a blockade. The US maintains arms sales to Taiwan under the Taiwan Relations Act.', parties:'China (PRC) vs. Taiwan (ROC), USA backing Taiwan', startYear:2022, wikipediaUrl:'https://en.wikipedia.org/wiki/Cross-Strait_relations' },
+  { id:'kp', country:'KP', name:'North Korea Tensions', summary:'North Korea tests ICBMs and deploys troops to Russia.', description:'North Korea has conducted numerous ICBM tests and deployed an estimated 10,000-12,000 soldiers to support Russia in the Ukraine war. Kim Jong-un has declared South Korea the "primary enemy" and ramped up nuclear weapons development.', parties:'North Korea vs. South Korea, USA, Japan', startYear:2022, wikipediaUrl:'https://en.wikipedia.org/wiki/North_Korea_and_weapons_of_mass_destruction' },
+  { id:'mz', country:'MZ', name:'Mozambique Insurgency', summary:'Islamist insurgency in Cabo Delgado threatens gas projects.', description:'An Islamist insurgency in Mozambique\'s Cabo Delgado province, linked to ISIS, has devastated the region since 2017. Attacks on communities and gas infrastructure have displaced hundreds of thousands. SADC and Rwandan forces are assisting Mozambican troops.', parties:'Mozambican Forces + Rwanda + SADC vs. ISIS-linked Ansar al-Sunna', startYear:2017, wikipediaUrl:'https://en.wikipedia.org/wiki/Cabo_Delgado_conflict' }
+];
+
+// ═══════════════════════════════════════════
+// DATA — MILITARY ARSENALS
+// ═══════════════════════════════════════════
+const MILITARY = {
+  'US': { name:'United States', iso2:'us', tier:1,
+    warWeapons:[
+      { name:'M1A2 SEPv3 Abrams', type:'Main Battle Tank', description:'Most advanced US MBT with depleted uranium armor and third-generation FLIR.', stats:{ 'Weight':'68 tonnes','Crew':'4','Main Gun':'120mm M256 smoothbore','Speed':'67 km/h','Range':'425 km' }},
+      { name:'BGM-71 TOW', type:'Anti-Tank Missile', description:'Wire-guided anti-tank missile system, widely used by US and allies.', stats:{ 'Range':'3,750 m','Warhead':'HEAT/Tandem','Guidance':'Wire/Thermal','Operator':'2-person crew' }},
+      { name:'M777 Howitzer', type:'Artillery', description:'Lightweight 155mm towed howitzer used extensively in Ukraine and beyond.', stats:{ 'Caliber':'155mm','Range':'30 km (Excalibur: 40 km)','Weight':'4,218 kg','Rate of Fire':'5 rpm' }}
+    ],
+    warVehicles:[
+      { name:'M2 Bradley IFV', type:'Infantry Fighting Vehicle', description:'Primary US IFV with 25mm autocannon and TOW missiles.', stats:{ 'Weight':'27 tonnes','Crew':'3 + 6','Armament':'25mm M242, TOW','Speed':'66 km/h' }},
+      { name:'Stryker', type:'Armored Personnel Carrier', description:'Eight-wheeled APC/IFV family used in multiple variants.', stats:{ 'Weight':'17 tonnes','Crew':'2 + 9','Speed':'100 km/h','Range':'530 km' }}
+    ],
+    warJets:[
+      { name:'F-22 Raptor', type:'5th-Gen Stealth Fighter', description:'World\'s premier air superiority fighter with supercruise and supermaneuverability.', stats:{ 'Speed':'Mach 2.25','Range':'2,960 km','Ceiling':'19,812 m','Stealth':'VLO','Weapons':'AIM-120C, AIM-9X, JDAMs' }},
+      { name:'F-35A Lightning II', type:'5th-Gen Multirole Fighter', description:'Advanced stealth multirole fighter with sensor fusion and AESA radar.', stats:{ 'Speed':'Mach 1.6','Range':'2,220 km','Ceiling':'15,240 m','Variants':'A/B/C','Countries':'15+ operators' }},
+      { name:'B-2 Spirit', type:'Strategic Stealth Bomber', description:'Only stealth flying-wing strategic bomber; can carry nuclear weapons.', stats:{ 'Range':'11,100 km','Payload':'18,000 kg','Crew':'2','Ceiling':'15,000 m','Cost':'$2.1B per unit' }},
+      { name:'B-21 Raider', type:'Next-Gen Stealth Bomber', description:'Newest USAF strategic bomber, replacing B-1B/B-2, with advanced stealth.', stats:{ 'Status':'Operational 2024','Payload':'Heavy','Stealth':'Extreme LO','Mission':'Nuclear/Conventional' }}
+    ],
+    warShips:[
+      { name:'Gerald R. Ford-class CVN', type:'Aircraft Carrier', description:'World\'s largest warships with EMALS catapults and 75+ aircraft.', stats:{ 'Displacement':'100,000 tonnes','Aircraft':'75+','Speed':'30+ knots','Crew':'4,539','Cost':'$13B' }},
+      { name:'Zumwalt-class Destroyer', type:'Stealth Destroyer', description:'Advanced stealth destroyer with 155mm AGS guns and electric drive.', stats:{ 'Displacement':'15,656 tonnes','Speed':'30 knots','Crew':'148','Armament':'AGS, VLS 80-cell' }},
+      { name:'Virginia-class SSN', type:'Attack Submarine', description:'Most advanced US nuclear attack submarine, capable of land attack.', stats:{ 'Displacement':'7,900 tonnes','Speed':'25+ knots','Depth':'488 m','Weapons':'Tomahawk, MK48 torpedoes' }}
+    ],
+    nuclearWeapons:[
+      { name:'LGM-30G Minuteman III', type:'ICBM', description:'Land-based ICBM forming the ground leg of the US nuclear triad.', stats:{ 'Range':'13,000 km','Warheads':'1-3 MIRVs (W78/W87)','Yield':'170-335 kT','Deployed':'400 silos','Status':'Operational' }},
+      { name:'UGM-133 Trident II D5', type:'SLBM', description:'Submarine-launched ballistic missile, most accurate SLBM in service.', stats:{ 'Range':'12,000 km','Warheads':'Up to 8 MIRVs','Yield':'100-475 kT','Platform':'Ohio-class SSBN' }},
+      { name:'B61-12 Gravity Bomb', type:'Nuclear Bomb', description:'Latest variant of the B61, with guided tail kit for precision delivery.', stats:{ 'Yield':'0.3-50 kT (dial-a-yield)','Delivery':'F-35, B-2, F-15E','Guidance':'INS tail kit','Status':'In production' }}
+    ],
+    other:[
+      { name:'MQ-9 Reaper', type:'Armed Drone (UCAV)', description:'Primary US armed drone for ISR and strike missions.', stats:{ 'Endurance':'27 hours','Payload':'1,700 kg','Weapons':'Hellfire, GBU-12','Speed':'444 km/h' }},
+      { name:'RQ-4 Global Hawk', type:'Surveillance Drone', description:'High-altitude long-endurance strategic reconnaissance drone.', stats:{ 'Altitude':'18,000 m','Endurance':'34 hours','Range':'22,779 km','Sensors':'Multi-spectral' }}
+    ]
+  },
+
+  'RU': { name:'Russia', iso2:'ru', tier:1,
+    warWeapons:[
+      { name:'T-90M Proryv', type:'Main Battle Tank', description:'Russia\'s most modern MBT with Relikt ERA and Kalina fire control.', stats:{ 'Weight':'48 tonnes','Crew':'3','Main Gun':'125mm 2A46M-5','Speed':'60 km/h','Range':'550 km' }},
+      { name:'9K720 Iskander-M', type:'Ballistic Missile System', description:'Short-range ballistic and cruise missile system with high precision.', stats:{ 'Range':'500 km','CEP':'5-7 m','Payload':'480-700 kg','Speed':'Mach 7','Mobility':'Road-mobile' }}
+    ],
+    warVehicles:[
+      { name:'BMP-3', type:'Infantry Fighting Vehicle', description:'Amphibious IFV with 100mm gun and 30mm autocannon.', stats:{ 'Weight':'18.7 tonnes','Armament':'100mm, 30mm, 7.62mm','Speed':'70 km/h','Crew':'3 + 7' }},
+      { name:'Terminator BMPT', type:'Fire Support Vehicle', description:'Tank support fighting vehicle designed for urban combat.', stats:{ 'Weight':'44 tonnes','Armament':'2x 30mm, missiles, RPGs','Crew':'5','Based on':'T-90 hull' }}
+    ],
+    warJets:[
+      { name:'Su-57 Felon', type:'5th-Gen Stealth Fighter', description:'Russia\'s first 5th-gen stealth fighter with internal weapons bays.', stats:{ 'Speed':'Mach 2','Range':'3,500 km','Ceiling':'20,000 m','Stealth':'Low-observable','Status':'Limited production' }},
+      { name:'Su-35S', type:'4++ Gen Air Superiority', description:'Advanced Flanker variant with thrust-vector control and IRBIS-E radar.', stats:{ 'Speed':'Mach 2.25','Range':'3,600 km','Ceiling':'18,000 m','Radar':'IRBIS-E PESA' }},
+      { name:'Tu-160M Blackjack', type:'Strategic Bomber', description:'World\'s largest and fastest bomber, modernized with new avionics.', stats:{ 'Speed':'Mach 2.05','Range':'12,300 km','Payload':'45,000 kg','Crew':'4','Weapons':'Kh-101, nuclear' }}
+    ],
+    warShips:[
+      { name:'Admiral Kuznetsov', type:'Aircraft Carrier', description:'Russia\'s only aircraft carrier, currently under lengthy refit.', stats:{ 'Displacement':'58,600 tonnes','Aircraft':'41','Speed':'29 knots','Status':'Under refit' }},
+      { name:'Yasen-M class SSN', type:'Nuclear Attack Submarine', description:'Russia\'s most modern nuclear attack submarine with Kalibr missiles.', stats:{ 'Displacement':'13,800 tonnes','Speed':'31 knots','Weapons':'Kalibr, Oniks, Zirkon','Crew':'90' }}
+    ],
+    nuclearWeapons:[
+      { name:'RS-28 Sarmat', type:'ICBM (Satan II)', description:'New heavy ICBM replacing SS-18 Satan; largest nuclear missile in service.', stats:{ 'Range':'18,000+ km','Warheads':'10-15 MIRVs','Yield':'Multi-Mt','Speed':'Mach 20+','Status':'Entering service' }},
+      { name:'Avangard HGV', type:'Hypersonic Glide Vehicle', description:'Maneuvering hypersonic glide vehicle mounted on ICBM, nearly impossible to intercept.', stats:{ 'Speed':'Mach 27','Maneuverability':'High','Warhead':'2 Mt nuclear','Status':'Operational 2019' }},
+      { name:'Poseidon UUV', type:'Nuclear Torpedo Drone', description:'Autonomous nuclear-armed underwater drone capable of causing radioactive tsunamis.', stats:{ 'Range':'10,000 km','Depth':'1,000 m','Speed':'70+ knots','Warhead':'2 Mt nuclear' }}
+    ],
+    other:[
+      { name:'S-400 Triumf', type:'Air Defense System', description:'Advanced long-range surface-to-air missile system with 400 km range.', stats:{ 'Range':'400 km','Altitude':'30 km','Targets':'Aircraft, missiles, drones','Radar':'91N6E' }},
+      { name:'Lancet Kamikaze Drone', type:'Loitering Munition', description:'Highly effective loitering munition used extensively in Ukraine.', stats:{ 'Warhead':'1-3 kg','Endurance':'40 min','Speed':'300 km/h','Guidance':'Electro-optical' }}
+    ]
+  },
+
+  'CN': { name:'China', iso2:'cn', tier:1,
+    warWeapons:[
+      { name:'Type 99A', type:'Main Battle Tank', description:'China\'s most advanced MBT with composite armor and thermal imager.', stats:{ 'Weight':'54 tonnes','Crew':'3','Gun':'125mm ZPT-98A','Speed':'80 km/h','Range':'600 km' }},
+      { name:'DF-26 IRBM', type:'Anti-Ship Ballistic Missile', description:'"Carrier Killer" capable of targeting aircraft carriers at 4,000 km range.', stats:{ 'Range':'4,000 km','Payload':'1,200-1,800 kg','Speed':'Mach 18','Role':'Anti-ship/land attack' }}
+    ],
+    warVehicles:[
+      { name:'ZBD-04A', type:'Infantry Fighting Vehicle', description:'Advanced IFV with 100mm gun and 30mm autocannon, amphibious.', stats:{ 'Weight':'21 tonnes','Armament':'100mm, 30mm','Speed':'65 km/h','Amphibious':'Yes' }}
+    ],
+    warJets:[
+      { name:'J-20 Mighty Dragon', type:'5th-Gen Stealth Fighter', description:'China\'s operational 5th-gen stealth fighter with internal weapons bays.', stats:{ 'Speed':'Mach 2+','Range':'2,000 km','Stealth':'Low-observable','Engine':'WS-15 (developing)','Status':'Operational' }},
+      { name:'J-35A', type:'Naval 5th-Gen Fighter', description:'China\'s carrier-based 5th-gen stealth fighter, similar to F-35C.', stats:{ 'Status':'Operational 2024','Role':'Naval stealth multirole','Platform':'Type 003 carrier' }},
+      { name:'H-20', type:'Stealth Strategic Bomber', description:'China\'s next-gen stealth bomber in development, flying-wing design.', stats:{ 'Status':'In development','Range':'10,000 km est.','Design':'Flying wing','Mission':'Nuclear/conventional' }}
+    ],
+    warShips:[
+      { name:'Type 003 Fujian CVN', type:'Aircraft Carrier', description:'China\'s first CATOBAR carrier with electromagnetic catapults, similar to US Ford-class.', stats:{ 'Displacement':'80,000 tonnes','EMALS':'Yes','Aircraft':'60+','Status':'Sea trials 2023' }},
+      { name:'Type 055 Renhai Cruiser', type:'Guided Missile Cruiser', description:'World\'s most capable cruiser with 112-cell VLS, largest surface combatant in Asia.', stats:{ 'Displacement':'13,000 tonnes','VLS':'112 cells','Speed':'30 knots','Role':'Area Air Defense' }}
+    ],
+    nuclearWeapons:[
+      { name:'DF-41', type:'ICBM', description:'Road-mobile ICBM with range covering entire USA, MIRV capable.', stats:{ 'Range':'14,000 km','Warheads':'Up to 10 MIRVs','Speed':'Mach 25','Mobility':'Road/silo','Status':'Operational' }},
+      { name:'JL-3 SLBM', type:'Submarine-Launched Ballistic Missile', description:'China\'s latest SLBM on Type 096 submarines with global reach.', stats:{ 'Range':'12,000 km','Warheads':'Multiple MIRVs','Platform':'Type 094A/096','Status':'Development/operational' }}
+    ],
+    other:[
+      { name:'CH-5 Rainbow Drone', type:'Armed UCAV', description:'Large UCAV comparable to MQ-9 Reaper, widely exported.', stats:{ 'Endurance':'60 hours','Payload':'1,000 kg','Weapons':'AR-1 missiles, bombs','Speed':'300 km/h' }}
+    ]
+  },
+
+  'IN': { name:'India', iso2:'in', tier:1,
+    warWeapons:[
+      { name:'Arjun Mk1A', type:'Main Battle Tank', description:'India\'s indigenous MBT with 120mm rifled gun and ERA protection.', stats:{ 'Weight':'68 tonnes','Crew':'4','Gun':'120mm rifled','Speed':'67 km/h','Range':'450 km' }},
+      { name:'BrahMos', type:'Supersonic Cruise Missile', description:'World\'s fastest operational cruise missile; land, sea, air-launched variants.', stats:{ 'Speed':'Mach 2.8-3','Range':'400-700 km','Warhead':'300 kg','Variants':'Land/Sea/Air/Sub' }}
+    ],
+    warVehicles:[
+      { name:'K9 Vajra-T', type:'Self-Propelled Howitzer', description:'Localized K9 Thunder 155mm howitzer for Indian Army.', stats:{ 'Caliber':'155mm','Range':'40 km','Speed':'67 km/h','Crew':'5' }}
+    ],
+    warJets:[
+      { name:'Tejas Mk1A', type:'Light Combat Aircraft', description:'India\'s indigenous LCA with AESA radar and BVR capability.', stats:{ 'Speed':'Mach 1.8','Range':'3,000 km','Radar':'Uttam AESA','Status':'Production' }},
+      { name:'Su-30MKI', type:'Air Superiority Fighter', description:'India\'s primary heavy fighter with thrust-vector control and BrahMos integration.', stats:{ 'Speed':'Mach 2','Range':'3,000 km','Radar':'N011M BARS','Weapons':'BrahMos-A' }},
+      { name:'Rafale', type:'4.5-Gen Multirole Fighter', description:'36 Rafales acquired from France with SCALP-EG and Meteor missiles.', stats:{ 'Speed':'Mach 1.8','Range':'3,700 km','Weapons':'Meteor, SCALP-EG','Quantity':'36' }}
+    ],
+    warShips:[
+      { name:'INS Vikrant (R11)', type:'Aircraft Carrier', description:'India\'s first indigenously built aircraft carrier, commissioned 2022.', stats:{ 'Displacement':'45,000 tonnes','Aircraft':'30 (MiG-29K, MH60R)','Speed':'28 knots','Status':'Operational 2022' }},
+      { name:'INS Arihant (S2)', type:'Nuclear Ballistic Submarine', description:'India\'s first indigenous nuclear ballistic missile submarine.', stats:{ 'Displacement':'6,000 tonnes','Missiles':'12 K-15 SLBMs','Status':'Operational','Fleet':'SSBN' }}
+    ],
+    nuclearWeapons:[
+      { name:'Agni-V', type:'ICBM', description:'India\'s first ICBM with MIRV capability targeting all of China.', stats:{ 'Range':'5,500-8,000 km','Warheads':'MIRV capable','Speed':'Mach 24','Status':'Operational 2023' }},
+      { name:'K-4 SLBM', type:'Submarine-Launched Ballistic Missile', description:'SLBM for INS Arighat and future SSBNs with 3,500 km range.', stats:{ 'Range':'3,500 km','Platform':'INS Arighat','Status':'In service' }}
+    ],
+    other:[
+      { name:'S-400 Triumf', type:'Air Defense System', description:'Russia-supplied S-400 system acquired despite US CAATSA threats.', stats:{ 'Range':'400 km','Altitude':'30 km','Status':'Operational','Squadrons':'5' }}
+    ]
+  },
+
+  'GB': { name:'United Kingdom', iso2:'gb', tier:1,
+    warWeapons:[
+      { name:'Challenger 3', type:'Main Battle Tank', description:'Upgraded Challenger 2 with new 120mm smoothbore gun and CITV.', stats:{ 'Weight':'72.8 tonnes','Gun':'120mm L55A1','Crew':'4','Speed':'59 km/h','Status':'Upgrade program' }}
+    ],
+    warJets:[
+      { name:'Eurofighter Typhoon', type:'4.5-Gen Multirole Fighter', description:'Primary RAF fighter with CAPTOR-E AESA radar and Meteor missiles.', stats:{ 'Speed':'Mach 2','Range':'2,900 km','Radar':'CAPTOR-E AESA','Weapons':'Meteor, Storm Shadow' }},
+      { name:'F-35B Lightning II', type:'5th-Gen STOVL Fighter', description:'Carrier-capable STOVL variant operated from Queen Elizabeth-class carriers.', stats:{ 'Speed':'Mach 1.6','STOVL':'Yes','Platform':'HMS Queen Elizabeth','Weapons':'Brimstone, Paveway' }}
+    ],
+    warShips:[
+      { name:'HMS Queen Elizabeth (R08)', type:'Aircraft Carrier', description:'UK\'s largest warship, operates F-35B fighters.', stats:{ 'Displacement':'65,000 tonnes','Aircraft':'36 F-35B','Speed':'25 knots','Crew':'679-1,600' }}
+    ],
+    nuclearWeapons:[
+      { name:'Trident II D5 (UK)', type:'SLBM', description:'UK\'s sole nuclear deterrent on Vanguard-class submarines.', stats:{ 'Range':'12,000 km','Warheads':'Up to 8','Platform':'Vanguard-class SSBN','Policy':'Continuous at-sea deterrent' }}
+    ],
+    warVehicles:[
+      { name:'Ajax Scout Vehicle', type:'Reconnaissance Vehicle', description:'Next-gen UK armored reconnaissance vehicle (delayed program).', stats:{ 'Weight':'42 tonnes','Armament':'40mm CTA cannon','Status':'In service (limited)','Crew':'3' }}
+    ],
+    other:[
+      { name:'Storm Shadow/SCALP', type:'Cruise Missile', description:'Long-range air-launched cruise missile used in Ukraine and Syria.', stats:{ 'Range':'550 km','Warhead':'450 kg BROACH','Speed':'Mach 0.8','Platform':'Typhoon, F-35' }}
+    ]
+  },
+
+  'FR': { name:'France', iso2:'fr', tier:1,
+    warWeapons:[
+      { name:'Leclerc', type:'Main Battle Tank', description:'France\'s primary MBT with auto-loader and GALIX protection system.', stats:{ 'Weight':'56.5 tonnes','Gun':'120mm CN120-26','Crew':'3','Speed':'71 km/h','Auto-loader':'Yes' }}
+    ],
+    warJets:[
+      { name:'Rafale F4', type:'4.5-Gen Multirole Fighter', description:'France\'s premier fighter with SPECTRA EW suite and nuclear capability.', stats:{ 'Speed':'Mach 1.8','Range':'3,700 km','Radar':'RBE2 AESA','Weapons':'ASMP-A nuclear, Meteor, SCALP' }}
+    ],
+    nuclearWeapons:[
+      { name:'ASMP-A', type:'Air-Launched Nuclear Missile', description:'France\'s primary air-launched nuclear missile on Rafale fighters.', stats:{ 'Range':'500 km','Speed':'Mach 3','Yield':'300 kT','Platform':'Rafale F3' }},
+      { name:'M51 SLBM', type:'Submarine-Launched Ballistic Missile', description:'France\'s SLBM on Le Triomphant-class submarines.', stats:{ 'Range':'10,000 km','Warheads':'6-10 TN 75','Platform':'Le Triomphant-class' }}
+    ],
+    warShips:[
+      { name:'Charles de Gaulle (R91)', type:'Aircraft Carrier', description:'France\'s only nuclear-powered aircraft carrier; only non-US nuclear carrier in the West.', stats:{ 'Displacement':'42,500 tonnes','Aircraft':'40','Nuclear':'Yes','Speed':'27 knots' }}
+    ],
+    warVehicles:[
+      { name:'VBMR Griffon', type:'Armored Personnel Carrier', description:'Modern 6x6 multi-role armored vehicle replacing the VAB.', stats:{ 'Weight':'24.5 tonnes','Crew':'2 + 8','Armament':'7.62mm RWS','Speed':'100 km/h' }}
+    ],
+    other:[
+      { name:'CAESAR 155mm', type:'Self-Propelled Howitzer', description:'Truck-mounted 155mm howitzer widely exported; highly effective in Ukraine.', stats:{ 'Caliber':'155mm','Range':'40 km (Vulcano: 50 km)','Speed':'100 km/h','Crew':'5' }}
+    ]
+  },
+
+  'IL': { name:'Israel', iso2:'il', tier:1,
+    warWeapons:[
+      { name:'Merkava Mk4M', type:'Main Battle Tank', description:'Israel\'s premier MBT with Trophy APS and unique front-engine design.', stats:{ 'Weight':'65 tonnes','Gun':'120mm MG253','Trophy APS':'Yes','Crew':'4','Speed':'64 km/h' }},
+      { name:'Jericho III ICBM', type:'Ballistic Missile', description:'Israel\'s long-range ballistic missile with nuclear capability (undeclared).', stats:{ 'Range':'6,500+ km','Payload':'750-1,000 kg','Speed':'Mach 20+','Status':'Operational (assumed)' }}
+    ],
+    warJets:[
+      { name:'F-35I Adir', type:'5th-Gen Stealth Fighter', description:'Israeli-modified F-35 with unique Israeli systems integrated.', stats:{ 'Speed':'Mach 1.6','Modifications':'Israeli EW, weapons, sensors','Quantity':'50+','Status':'Operational' }},
+      { name:'F-15I Ra\'am', type:'Strike Fighter', description:'Israeli F-15 optimized for long-range strike with Python 5, JDAM.', stats:{ 'Speed':'Mach 2.5','Range':'4,450 km','Payload':'10,600 kg','Role':'Long-range strike' }}
+    ],
+    warShips:[
+      { name:'Sa\'ar 6 (Magen-class)', type:'Corvette', description:'Modern corvette with Iron Dome naval variant (C-Dome) and Barak-8.', stats:{ 'Displacement':'1,900 tonnes','Missiles':'C-Dome, Barak-8','Speed':'30 knots','Crew':'70' }}
+    ],
+    nuclearWeapons:[
+      { name:'Nuclear Arsenal (Undeclared)', type:'Nuclear Weapons (Assumed)', description:'Israel maintains a policy of nuclear ambiguity; estimated 90 nuclear warheads.', stats:{ 'Estimated Warheads':'~90','Policy':'Ambiguity (NCND)','Delivery':'Jericho missiles, aircraft, submarines','Status':'Assumed operational' }}
+    ],
+    warVehicles:[
+      { name:'Namer IFV', type:'Heavy Infantry Fighting Vehicle', description:'Heaviest IFV in service globally, based on Merkava 4 hull with Trophy.', stats:{ 'Weight':'60 tonnes','Trophy APS':'Yes','Capacity':'3 + 9','Armament':'12.7mm HMG, optional 30mm' }}
+    ],
+    other:[
+      { name:'Iron Dome', type:'Short-Range Air Defense', description:'World\'s most combat-proven air defense system against rockets and drones.', stats:{ 'Range':'4-70 km','Intercept Rate':'90%+','Cost per intercept':'$50,000','Batteries':'Dozens deployed' }},
+      { name:'David\'s Sling', type:'Medium-Range Air Defense', description:'Intercepts medium-to-long range ballistic missiles and cruise missiles.', stats:{ 'Range':'40-300 km','Target':'BMs, cruise missiles','Interceptor':'Stunner' }}
+    ]
+  },
+
+  'PK': { name:'Pakistan', iso2:'pk', tier:2,
+    warWeapons:[
+      { name:'Al-Khalid (MBT-2000)', type:'Main Battle Tank', description:'Pakistan\'s main MBT co-developed with China, composite armor.', stats:{ 'Weight':'48 tonnes','Gun':'125mm smoothbore','Crew':'3','Speed':'70 km/h' }}
+    ],
+    warJets:[
+      { name:'JF-17 Thunder Block III', type:'Multirole Fighter', description:'Sino-Pakistani lightweight fighter with AESA radar and PL-15 capability.', stats:{ 'Speed':'Mach 1.6','Range':'3,482 km','Radar':'KLJ-7A AESA','Weapons':'PL-15, Ra\'ad cruise missile' }},
+      { name:'F-16 Block 52+', type:'Multirole Fighter', description:'US-supplied F-16s recently upgraded with Link 16 and AMRAAM.', stats:{ 'Speed':'Mach 2','Range':'4,220 km','Weapons':'AIM-120C AMRAAM','Quantity':'76 total' }}
+    ],
+    nuclearWeapons:[
+      { name:'Shaheen-III MRBM', type:'Medium-Range Ballistic Missile', description:'Pakistan\'s longest-range missile targeting all of India.', stats:{ 'Range':'2,750 km','Payload':'1,000 kg','Speed':'Mach 18','Status':'Operational' }},
+      { name:'Ababeel MIRV ICBM', type:'MIRV Ballistic Missile', description:'Pakistan\'s first MIRV-capable ballistic missile to defeat Indian BMD.', stats:{ 'Range':'2,200 km','Warheads':'Multiple MIRVs','Status':'Development/testing' }}
+    ],
+    warShips:[
+      { name:'MILGEM-class (PNS Babur)', type:'Corvette', description:'Turkish-built corvette with Harpoon missiles and CIWS.', stats:{ 'Displacement':'2,400 tonnes','Speed':'29 knots','Missiles':'Harpoon','Status':'Operational' }}
+    ],
+    warVehicles:[
+      { name:'AZM (VT-4)', type:'Main Battle Tank (New)', description:'New Chinese VT-4 tanks recently acquired to supplement Al-Khalid.', stats:{ 'Weight':'52 tonnes','Gun':'125mm autoloader','Status':'In service','Quantity':'176' }}
+    ],
+    other:[
+      { name:'Ra\'ad-II ALCM', type:'Air-Launched Cruise Missile', description:'Nuclear-capable air-launched cruise missile with 600 km range.', stats:{ 'Range':'600 km','Speed':'Subsonic','Platform':'JF-17, Mirage','Warhead':'Nuclear/conventional' }}
+    ]
+  },
+
+  'KP': { name:'North Korea', iso2:'kp', tier:2,
+    warWeapons:[
+      { name:'Hwasong-17 ICBM', type:'Intercontinental Ballistic Missile', description:'World\'s largest liquid-fueled road-mobile ICBM; can reach entire US mainland.', stats:{ 'Range':'15,000+ km','Payload':'Multiple MIRVs (developing)','Speed':'Mach 22+','Status':'Operational' }},
+      { name:'Hwasong-18 ICBM', type:'Solid-Fuel ICBM', description:'North Korea\'s first solid-fuel ICBM enabling rapid launch.', stats:{ 'Range':'15,000 km est.','Fuel':'Solid (faster launch)','Status':'Tested 2023' }}
+    ],
+    warJets:[
+      { name:'MiG-29', type:'Air Superiority Fighter', description:'North Korea\'s best fighter jet, aging Soviet-era platform.', stats:{ 'Speed':'Mach 2.25','Quantity':'40','Status':'Aging fleet','Origin':'Soviet/Russian' }}
+    ],
+    warVehicles:[
+      { name:'Chonma-216', type:'Main Battle Tank', description:'North Korea\'s most modern MBT based on T-72/T-62 technology.', stats:{ 'Weight':'44 tonnes','Gun':'125mm','ERA':'Yes','Crew':'4' }}
+    ],
+    nuclearWeapons:[
+      { name:'Nuclear Warhead Program', type:'Nuclear Weapons', description:'Estimated 40-50 nuclear warheads; miniaturized for missile delivery.', stats:{ 'Estimated Warheads':'40-50','Yield':'Variable (boosted fission)','Delivery':'ICBMs, SLBMs, tactical','Tests':'6 nuclear tests' }},
+      { name:'Haeil Nuclear Torpedo', type:'Nuclear Underwater Drone', description:'Claimed nuclear-armed autonomous underwater vehicle similar to Russia\'s Poseidon.', stats:{ 'Status':'Tested (claimed)','Warhead':'Nuclear','Mission':'Harbor/carrier group attack' }}
+    ],
+    warShips:[
+      { name:'Sinpo-C-class SSBN', type:'Ballistic Missile Submarine', description:'Small ballistic missile submarine with 3 SLBMs.', stats:{ 'Displacement':'2,000 tonnes est.','Missiles':'3 Pukguksong-3','Status':'Operational' }}
+    ],
+    other:[
+      { name:'KN-23/24/25 Short-Range BM', type:'Tactical Ballistic Missiles', description:'North Korea\'s modern solid-fuel short-range missiles similar to Iskander. Supplied to Russia.', stats:{ 'Range':'400-600 km','CEP':'10 m est.','Fuel':'Solid','Supplied to':'Russia (Ukraine war)' }}
+    ]
+  },
+
+  'KR': { name:'South Korea', iso2:'kr', tier:2,
+    warWeapons:[
+      { name:'K2 Black Panther', type:'Main Battle Tank', description:'One of the world\'s most advanced MBTs with automatic target tracking.', stats:{ 'Weight':'55 tonnes','Gun':'120mm smoothbore','Speed':'70 km/h','Active Protection':'Yes' }}
+    ],
+    warJets:[
+      { name:'KF-21 Boramae', type:'4.5-Gen Multirole Fighter', description:'South Korea\'s indigenous fighter, prototype flying 2022, production 2026.', stats:{ 'Speed':'Mach 1.8+','Status':'Flight testing','AESA Radar':'Yes','Partners':'Indonesia (co-develop)' }},
+      { name:'F-35A', type:'5th-Gen Stealth Fighter', description:'South Korea operates F-35A fleet for deterrence against North Korea.', stats:{ 'Quantity':'40','Role':'Strike/stealth','Weapons':'JDAM, JASSM','Status':'Operational' }}
+    ],
+    warShips:[
+      { name:'Sejong the Great-class DDG', type:'Guided Missile Destroyer', description:'Aegis-equipped destroyer, one of the most capable destroyers in Asia.', stats:{ 'Displacement':'11,000 tonnes','VLS':'128 cells','Speed':'30 knots','Aegis':'Yes' }}
+    ],
+    nuclearWeapons:[{ name:'No Nuclear Weapons', type:'Non-Nuclear', description:'South Korea is a non-nuclear state under the NPT; relies on US extended deterrence.', stats:{ 'Status':'Non-nuclear','Alliance':'US extended deterrence','THAAD':'Deployed' }}],
+    warVehicles:[
+      { name:'K9 Thunder', type:'Self-Propelled Howitzer', description:'World\'s most exported SPH; used by 10+ countries.', stats:{ 'Caliber':'155mm','Range':'40 km','Speed':'67 km/h','Exports':'India, Turkey, Poland, Egypt' }}
+    ],
+    other:[
+      { name:'Hyunmoo-5 ICBM', type:'Ballistic Missile', description:'South Korea\'s new super-heavy ballistic missile with 8-9 tonne warhead for decapitation strikes.', stats:{ 'Range':'3,000 km','Warhead':'8,000 kg','Target':'Underground NK bunkers','Status':'Operational 2023' }}
+    ]
+  },
+
+  'JP': { name:'Japan', iso2:'jp', tier:2,
+    warWeapons:[
+      { name:'Type 10 (Hitomaru)', type:'Main Battle Tank', description:'Japan\'s advanced lightweight MBT with C4I network and active protection.', stats:{ 'Weight':'44 tonnes','Gun':'120mm smoothbore','Network':'C4I','Speed':'70 km/h' }}
+    ],
+    warJets:[
+      { name:'F-35A/B', type:'5th-Gen Stealth Fighter', description:'Japan is the largest F-35 customer outside the US with 147 ordered.', stats:{ 'Ordered':'147 (A+B variants)','Role':'Air superiority/strike','B variant':'For converted carriers','Status':'Entering service' }},
+      { name:'F-2 (Viper Zero)', type:'Multirole Fighter', description:'Japanese-developed F-16 variant with J/APG-2 AESA radar.', stats:{ 'Speed':'Mach 2','Quantity':'91','Radar':'J/APG-2 AESA','Retirement':'2035' }}
+    ],
+    warShips:[
+      { name:'Izumo-class DDH (converted CV)', type:'Helicopter Carrier (converting to CV)', description:'Being converted to operate F-35B; Japan\'s first carriers since WWII.', stats:{ 'Displacement':'27,000 tonnes','Aircraft':'28 F-35B (planned)','Status':'Conversion ongoing' }},
+      { name:'Atago-class Aegis DDG', type:'Guided Missile Destroyer', description:'Aegis-equipped destroyer capable of BMD missions against North Korean missiles.', stats:{ 'Displacement':'10,000 tonnes','Aegis':'Yes','BMD':'SM-3 Block IIA','VLS':'96 cells' }}
+    ],
+    nuclearWeapons:[{ name:'No Nuclear Weapons', type:'Non-Nuclear', description:'Japan is constitutionally committed to no nuclear weapons; protected by US nuclear umbrella.', stats:{ 'Policy':'Three non-nuclear principles','Status':'Non-nuclear NPT member','Alliance':'US extended deterrence' }}],
+    warVehicles:[
+      { name:'Type 89 IFV', type:'Infantry Fighting Vehicle', description:'Japan\'s primary IFV with 35mm autocannon and Jyu-MAT ATGM.', stats:{ 'Weight':'26.5 tonnes','Armament':'35mm, Jyu-MAT','Crew':'3 + 7','Speed':'70 km/h' }}
+    ],
+    other:[
+      { name:'Type 12 SSM (upgraded)', type:'Anti-Ship Cruise Missile', description:'Extended-range Type 12 with 1,500 km range for stand-off strike.', stats:{ 'Range':'1,500 km','Role':'Anti-ship/land attack','Status':'Development 2024' }}
+    ]
+  },
+
+  'IR': { name:'Iran', iso2:'ir', tier:2,
+    warWeapons:[
+      { name:'Fattah-2 HGV', type:'Hypersonic Missile', description:'Iran\'s claimed hypersonic ballistic missile with maneuvering warhead.', stats:{ 'Speed':'Mach 15+','Range':'1,400 km','Status':'Claimed operational 2023','Guidance':'Terminal maneuver' }},
+      { name:'Shahed-136 Kamikaze Drone', type:'Loitering Munition', description:'Iranian suicide drone used massively in Ukraine via Russia and by Houthis.', stats:{ 'Range':'2,500 km','Warhead':'50 kg','Speed':'185 km/h','Cost':'$20,000 est.' }}
+    ],
+    warJets:[
+      { name:'F-14A Tomcat', type:'Air Superiority Fighter', description:'Iran still operates aging F-14s acquired before the 1979 revolution.', stats:{ 'Status':'Aging, limited operational','Speed':'Mach 2.34','Missiles':'AIM-54 Phoenix (dwindling)','Quantity':'~40 in storage' }},
+      { name:'Su-35 (transferred)', type:'Air Superiority Fighter', description:'Russia transferred Su-35s to Iran in 2023.', stats:{ 'Status':'Delivered 2023','Quantity':'~24','Speed':'Mach 2.25','Radar':'Irbis-E PESA' }}
+    ],
+    warShips:[
+      { name:'IRGC Fast Attack Craft', type:'Swarm Warfare Vessels', description:'Hundreds of small fast boats for Gulf harassment and swarm tactics.', stats:{ 'Tactics':'Swarm attack','Weapons':'Rockets, torpedoes, mines','Area':'Persian Gulf/Strait of Hormuz' }}
+    ],
+    nuclearWeapons:[
+      { name:'Nuclear Program (Near-Threshold)', type:'Nuclear Capability (Threshold)', description:'Iran has enriched uranium to 83.7% purity; estimated 1-2 weeks from weapons-grade material.', stats:{ 'Enrichment':'83.7% (weapons-grade: 90%)','Breakout Time':'~1-2 weeks (material only)','Status':'IAEA monitoring','Deal':'JCPOA collapsed' }}
+    ],
+    warVehicles:[
+      { name:'Karrar MBT', type:'Main Battle Tank', description:'Iran\'s domestically produced MBT unveiled in 2017.', stats:{ 'Weight':'51 tonnes','Gun':'125mm','Era':'Explosive reactive armor','Status':'Limited production' }}
+    ],
+    other:[
+      { name:'Arash-2 Suicide Drone', type:'Loitering Munition', description:'Large long-range suicide drone with 50 kg warhead.', stats:{ 'Range':'2,000 km','Warhead':'50 kg','Speed':'Subsonic' }}
+    ]
+  },
+
+  'SA': { name:'Saudi Arabia', iso2:'sa', tier:2,
+    warWeapons:[
+      { name:'M1A2S Abrams', type:'Main Battle Tank', description:'Saudi-specific M1A2 with desert modifications; largest Abrams fleet outside USA.', stats:{ 'Quantity':'900+','Modifications':'Desert kit, Arab language systems','Speed':'67 km/h' }}
+    ],
+    warJets:[
+      { name:'Typhoon Tranche 3', type:'Multirole Fighter', description:'Advanced Eurofighter with CAPTOR-E radar and Storm Shadow integration.', stats:{ 'Quantity':'72','Speed':'Mach 2','Weapons':'Storm Shadow, Brimstone','AESA':'CAPTOR-E' }},
+      { name:'F-15SA', type:'Advanced Strike Fighter', description:'Most advanced F-15 variant with 3D TVC engines and conformal fuel tanks.', stats:{ 'Quantity':'84','Speed':'Mach 2.5','Electronics':'APG-63(V)3 AESA','Weapons':'GBU-39 SDB' }}
+    ],
+    warShips:[
+      { name:'Al Riyadh-class Frigate', type:'Guided Missile Frigate', description:'French La Fayette-class frigates with Crotale missiles.', stats:{ 'Displacement':'4,700 tonnes','Missiles':'Otomat Mk2, Crotale','Quantity':'3','Speed':'25 knots' }}
+    ],
+    nuclearWeapons:[{ name:'No Nuclear Weapons', type:'Non-Nuclear', description:'Saudi Arabia is non-nuclear but has stated it would seek nuclear weapons if Iran acquires them.', stats:{ 'Status':'Non-nuclear','Stated Policy':'Match Iran if it goes nuclear','Enrichment':'Pursuing civilian program' }}],
+    warVehicles:[
+      { name:'Bradley M2A2', type:'Infantry Fighting Vehicle', description:'Large fleet of M2A2 Bradleys used in Yemen conflict.', stats:{ 'Quantity':'400+','Armament':'25mm, TOW','Speed':'66 km/h' }}
+    ],
+    other:[
+      { name:'THAAD System', type:'Theater Missile Defense', description:'Terminal High Altitude Area Defense protecting Riyadh from Houthi missiles.', stats:{ 'Range':'200 km','Altitude':'150 km','Deployed':'Multiple batteries','Efficacy':'High vs ballistic missiles' }}
+    ]
+  },
+
+  'TR': { name:'Turkey', iso2:'tr', tier:2,
+    warWeapons:[
+      { name:'Altay MBT', type:'Main Battle Tank', description:'Turkey\'s indigenous MBT in production, based on K2 technology.', stats:{ 'Weight':'65 tonnes','Gun':'120mm','Status':'In production','Engine':'South Korean partnership' }}
+    ],
+    warJets:[
+      { name:'KAAN (TF-X)', type:'5th-Gen Stealth Fighter (Indigenous)', description:'Turkey\'s indigenous stealth fighter prototype; maiden flight January 2023.', stats:{ 'Status':'Flight testing','Target production':'2028','Engine':'Interim GE F110, future indigenous','Partners':'Indigenous ROKETSAN' }},
+      { name:'F-16C/D Block 50+', type:'Multirole Fighter', description:'Turkey recently acquired additional F-16C/Ds after F-35 program ejection.', stats:{ 'Quantity':'245 F-16s total','Upgrade':'Block 70 avionics upgrade (approved 2024)','Status':'Operational' }}
+    ],
+    warShips:[
+      { name:'TCG Anadolu (L-400)', type:'Multipurpose Amphibious Ship', description:'Turkey\'s helicopter carrier; modified to operate Bayraktar TB3 drones instead of F-35B.', stats:{ 'Displacement':'27,000 tonnes','Drones':'Bayraktar TB3','Status':'Operational 2023' }}
+    ],
+    nuclearWeapons:[{ name:'No National Nuclear Weapons', type:'NATO Nuclear Sharing', description:'Turkey hosts ~50 US B61 gravity bombs at Incirlik Air Base under NATO sharing.', stats:{ 'US Bombs at Incirlik':'~50 B61','Platform':'F-16 (NATO certified)','Policy':'NATO nuclear sharing' }}],
+    warVehicles:[
+      { name:'Altay ACV-15', type:'Armored Personnel Carrier', description:'FNSS ACV-15 infantry fighting vehicle widely used by Turkish Army.', stats:{ 'Weight':'14.2 tonnes','Armament':'25mm autocannon','Crew':'3 + 9','Speed':'65 km/h' }}
+    ],
+    other:[
+      { name:'Bayraktar TB2', type:'Combat Drone (UCAV)', description:'World-famous Turkish UCAV; proven in Libya, Nagorno-Karabakh, Ukraine, Somalia.', stats:{ 'Endurance':'27 hours','Payload':'150 kg (4x MAM-L)','Range':'300 km (GCS)','Operators':'30+ countries' }}
+    ]
+  },
+
+  'UA': { name:'Ukraine', iso2:'ua', tier:2,
+    warWeapons:[
+      { name:'FPV Suicide Drones', type:'FPV Loitering Munition', description:'Ukraine produces thousands of cheap FPV drones monthly; revolutionized warfare.', stats:{ 'Cost':'$200-500','Range':'10-15 km','Warhead':'RPG/grenade','Production':'100,000+/month' }},
+      { name:'Neptune Anti-Ship Missile', type:'Anti-Ship Cruise Missile', description:'Ukrainian-made missile that sank Russian cruiser Moskva in April 2022.', stats:{ 'Range':'280 km','Warhead':'150 kg','Speed':'Subsonic','Notable':'Sank Moskva' }}
+    ],
+    warJets:[
+      { name:'F-16AM/BM Fighting Falcon', type:'Multirole Fighter', description:'Netherlands/Denmark donated F-16s arrived in Ukraine mid-2024.', stats:{ 'Quantity':'~20 delivered','Origin':'Netherlands, Denmark','Status':'Operational 2024','Weapons':'AIM-120, HARM' }},
+      { name:'MiG-29 (upgraded)', type:'Multirole Fighter', description:'Legacy Soviet fighter adapted to fire Western weapons including JDAM-ER.', stats:{ 'Weapons':'JDAM-ER, HARM, AIM-120 (modified)','Status':'Active','Quantity':'~40' }}
+    ],
+    warShips:[
+      { name:'Magura V5 Naval Drone', type:'Autonomous Naval Drone', description:'Ukrainian surface drone that has sunk multiple Russian naval vessels.', stats:{ 'Warhead':'300 kg','Speed':'42 knots','Range':'800 km','Victims':'Sergey Kotov, Ivanovets (sunk)' }}
+    ],
+    nuclearWeapons:[{ name:'No Nuclear Weapons (Budapest 1994)', type:'Non-Nuclear', description:'Ukraine surrendered Soviet nuclear weapons in 1994 Budapest Memorandum in exchange for security guarantees that Russia violated in 2022.', stats:{ 'Warheads surrendered':'1,900 (1994)','Guarantors':'USA, UK, Russia','Status':'Non-nuclear' }}],
+    warVehicles:[
+      { name:'M2A2 Bradley IFV (US-supplied)', type:'Infantry Fighting Vehicle', description:'US-supplied Bradleys proved very effective in Ukrainian counteroffensives.', stats:{ 'Supplied':'300+','Performance':'High in Zaporizhzhia offensive','Armament':'25mm, TOW' }}
+    ],
+    other:[
+      { name:'ATACMS (M39/M57)', type:'Army Tactical Missile System', description:'US-supplied long-range ballistic missiles targeting Russian rear areas.', stats:{ 'Range':'165-300 km','Warhead':'Unitary/submunition','Status':'Operational in Ukraine','Cleared for':'Russian territory (limited)' }}
+    ]
+  },
+
+  'AU': { name:'Australia', iso2:'au', tier:2,
+    warJets:[
+      { name:'F-35A', type:'5th-Gen Stealth Fighter', description:'Australia operates 72 F-35As replacing legacy Hornets.', stats:{ 'Quantity':'72','Status':'Operational','Base':'RAAF Williamtown, Tindal' }}
+    ],
+    warShips:[
+      { name:'Hobart-class AWD', type:'Air Warfare Destroyer', description:'Aegis-equipped destroyer providing area air defense for the fleet.', stats:{ 'Displacement':'7,000 tonnes','VLS':'48 cells','Speed':'28 knots','Aegis':'Yes' }},
+      { name:'SSN-AUKUS Submarine', type:'Nuclear Attack Submarine', description:'Future nuclear submarines under AUKUS deal; Virginia-class in interim.', stats:{ 'Timeline':'Virginias ~2033, AUKUS SSN ~2042','Partners':'USA, UK','Status':'Planning/construction' }}
+    ],
+    nuclearWeapons:[{ name:'No Nuclear Weapons', type:'Non-Nuclear', description:'Australia is non-nuclear but will operate nuclear-powered (not armed) submarines under AUKUS.', stats:{ 'Status':'Non-nuclear','AUKUS SSN':'Nuclear-powered, conventionally armed' }}],
+    warWeapons:[
+      { name:'Boxer CRV', type:'Combat Reconnaissance Vehicle', description:'German-designed 8x8 armored vehicle replacing ASLAV in Australian Army.', stats:{ 'Weight':'38 tonnes','Armament':'30mm Bushmaster','Quantity':'211','Status':'In delivery' }}
+    ],
+    warVehicles:[
+      { name:'Abrams M1A2 SEPv3', type:'Main Battle Tank', description:'Australia acquired M1A2 SEPv3 Abrams to replace Leopard 1.', stats:{ 'Quantity':'75','Status':'In delivery 2024','Crew':'4','Weight':'68 tonnes' }}
+    ],
+    other:[
+      { name:'AGM-158B JASSM-ER', type:'Long-Range Strike Missile', description:'Long-range stealthy cruise missile on F/A-18F and F-35A.', stats:{ 'Range':'900+ km','Stealth':'Yes','Platform':'F/A-18F, F-35A','Status':'Operational' }}
+    ]
+  },
+
+  'DE': { name:'Germany', iso2:'de', tier:2,
+    warWeapons:[
+      { name:'Leopard 2A7+', type:'Main Battle Tank', description:'NATO\'s most exported MBT, combat-proven; sent to Ukraine.', stats:{ 'Weight':'67 tonnes','Gun':'120mm L55A1','Crew':'4','Speed':'72 km/h','Operators':'20+ countries' }}
+    ],
+    warJets:[
+      { name:'Eurofighter Typhoon', type:'Multirole Fighter', description:'Germany operates Typhoon with nuclear delivery certification for B61-12.', stats:{ 'Quantity':'129','Nuclear cert':'B61-12 delivery','Speed':'Mach 2','Status':'Operational' }}
+    ],
+    warShips:[
+      { name:'F125 Baden-Württemberg', type:'Frigate', description:'Germany\'s newest stabilization frigate optimized for prolonged missions.', stats:{ 'Displacement':'7,200 tonnes','Speed':'26 knots','Crew':'120','Missiles':'RAM, Harpoon' }}
+    ],
+    nuclearWeapons:[{ name:'Nuclear Sharing (B61-12)', type:'NATO Nuclear Sharing', description:'Germany hosts US B61 nuclear bombs at Büchel Air Base; Tornado to be replaced by Eurofighter.', stats:{ 'Bombs':'~20 B61','Platform':'Eurofighter (transitioning from Tornado)','Base':'Büchel Air Base' }}],
+    warVehicles:[
+      { name:'Puma SIPG IFV', type:'Infantry Fighting Vehicle', description:'Germany\'s advanced IFV with excellent protection and 30mm gun.', stats:{ 'Weight':'43 tonnes','Armament':'30mm MK30-2/ABM','Active protection':'Coming','Speed':'65 km/h' }}
+    ],
+    other:[
+      { name:'IRIS-T SLM', type:'Air Defense System', description:'Mobile medium-range air defense system supplied to Ukraine; very effective.', stats:{ 'Range':'40 km','Altitude':'20 km','Missiles':'IRIS-T','Supplied to':'Ukraine' }}
+    ]
+  },
+
+  'BR': { name:'Brazil', iso2:'br', tier:2,
+    warJets:[
+      { name:'Gripen E (F-39)', type:'Multirole Fighter', description:'Sweden\'s Gripen E selected as Brazil\'s new fighter, assembled in Brazil.', stats:{ 'Speed':'Mach 2','Radar':'ES-05 Raven AESA','Quantity':'36','Local production':'Yes' }}
+    ],
+    warShips:[
+      { name:'Riachuelo-class SSK', type:'Conventional Submarine', description:'French Scorpène-class submarines built in Brazil by DCNS.', stats:{ 'Quantity':'4 (+ 1 SSBN building)','Displacement':'1,870 tonnes','Speed':'20 knots submerged' }}
+    ],
+    nuclearWeapons:[{ name:'No Nuclear Weapons', type:'Non-Nuclear', description:'Brazil is non-nuclear but building its first nuclear-powered submarine (Álvaro Alberto).', stats:{ 'Status':'Non-nuclear NPT member','Nuclear submarine':'Álvaro Alberto (2029 est.)' }}],
+    warWeapons:[{ name:'Astros II MLRS', type:'Multiple Launch Rocket System', description:'Brazilian MLRS system with 150+ km range; exported to Middle East.', stats:{ 'Range':'150+ km','Rockets':'127mm-450mm','Operators':'Saudi Arabia, Iraq, Malaysia' }}],
+    warVehicles:[{ name:'Guarani APC', type:'Wheeled APC', description:'Brazil\'s indigenous 6x6 APC replacing M113s.', stats:{ 'Weight':'22 tonnes','Armament':'12.7mm HMG','Speed':'105 km/h','Amphibious':'Yes' }}],
+    other:[{ name:'VANT (FAB UAV)', type:'Reconnaissance Drone', description:'Brazilian Air Force\'s surveillance drone program.', stats:{ 'Role':'ISR','Range':'500 km','Status':'In service' }}]
+  },
+
+  'TW': { name:'Taiwan', iso2:'tw', tier:2,
+    warJets:[
+      { name:'F-16V Viper', type:'Multirole Fighter', description:'Taiwan\'s upgraded F-16s with AESA radar, the backbone of ROCAF.', stats:{ 'Quantity':'141 upgraded','Radar':'APG-83 AESA','Weapons':'AIM-120D, AIM-9X','Status':'Operational' }},
+      { name:'F-CK-1 Ching-kuo', type:'Indigenous Defense Fighter', description:'Taiwan\'s domestically developed fighter; being replaced by F-16V.', stats:{ 'Quantity':'130','Speed':'Mach 1.8','Status':'Being phased out' }}
+    ],
+    warShips:[
+      { name:'Tuo Chiang-class Corvette', type:'Stealth Missile Corvette', description:'Fast stealth missile corvette optimized for asymmetric anti-invasion warfare.', stats:{ 'Speed':'38 knots','Missiles':'16 Hsiung Feng III supersonic','Stealth':'Yes','Cost':'$184M' }}
+    ],
+    nuclearWeapons:[{ name:'No Nuclear Weapons', type:'Non-Nuclear', description:'Taiwan abandoned its nuclear program in the 1970s under US pressure; relies on US deterrence.', stats:{ 'Status':'Non-nuclear','Deterrence':'US Taiwan Relations Act' }}],
+    warWeapons:[
+      { name:'Hsiung Feng IIE Cruise Missile', type:'Land-Attack Cruise Missile', description:'Taiwanese cruise missile with range to strike Beijing/Shanghai.', stats:{ 'Range':'1,200 km','Speed':'Mach 0.85','Warhead':'450 kg','Targets':'PRC mainland' }}
+    ],
+    warVehicles:[
+      { name:'CM-32 Yunpao IFV', type:'Infantry Fighting Vehicle', description:'Taiwan\'s 8x8 wheeled IFV.', stats:{ 'Weight':'24 tonnes','Armament':'40mm AGL or 20mm','Speed':'100 km/h','Variants':'Multiple' }}
+    ],
+    other:[
+      { name:'Porcupine Strategy', type:'Asymmetric Defense Doctrine', description:'Taiwan\'s shift to cheap, dispersed, asymmetric capabilities to defeat PLA invasion.', stats:{ 'Elements':'Javelin ATGMs, HIMARS, mines, coastal missiles','Philosophy':'Make invasion too costly','US support':'$19B in arms approvals' }}
+    ]
+  },
+
+  'PL': { name:'Poland', iso2:'pl', tier:2,
+    warWeapons:[
+      { name:'K2PL Black Panther', type:'Main Battle Tank', description:'Poland ordered 820 K2 tanks; largest tank purchase in NATO history.', stats:{ 'Ordered':'820','Domestic prod':'Polonized K2PL version','Status':'Deliveries ongoing','World\'s best?':'Top tier MBT' }}
+    ],
+    warJets:[
+      { name:'F-35A', type:'5th-Gen Stealth Fighter', description:'Poland ordered 32 F-35As, becoming a significant NATO air power.', stats:{ 'Ordered':'32','Delivery':'2024-2030','Base':'Łask','Role':'Strike/stealth' }}
+    ],
+    warShips:[
+      { name:'Orka-class Submarine', type:'Conventional Submarine', description:'Poland planning to acquire 3 Orka-class submarines.', stats:{ 'Status':'Competition ongoing','Quantity':'3 planned','Timeline':'2030s' }}
+    ],
+    nuclearWeapons:[{ name:'NATO Nuclear Sharing (Seeking)', type:'Nuclear Sharing (Requested)', description:'Poland has requested to join NATO nuclear sharing program, hosting US B61 bombs.', stats:{ 'Status':'Request made','Current':'No nuclear weapons','Seeking':'B61 hosting' }}],
+    warVehicles:[
+      { name:'Borsuk IFV', type:'Infantry Fighting Vehicle', description:'Poland\'s new indigenous amphibious IFV replacing legacy BMP-1.', stats:{ 'Weight':'28 tonnes','Armament':'30mm Bushmaster','Amphibious':'Yes','Status':'Production 2023' }}
+    ],
+    other:[
+      { name:'K239 Chunmoo MLRS', type:'Multiple Launch Rocket System', description:'Poland ordered 290 South Korean Chunmoo MLRS systems.', stats:{ 'Ordered':'290','Range':'80-290 km','Status':'Deliveries ongoing' }}
+    ]
+  },
+
+  'CA': { name:'Canada', iso2:'ca', tier:2,
+    warJets:[
+      { name:'F-35A (future)', type:'5th-Gen Stealth Fighter', description:'Canada finally selected F-35A after years of delays.', stats:{ 'Ordered':'88','Status':'Contract signed 2023','Delivery':'2026+','Replacing':'CF-18 Hornet' }}
+    ],
+    warShips:[
+      { name:'Halifax-class Frigate', type:'Guided Missile Frigate', description:'Canada\'s primary surface combatant; undergoing FELEX upgrade.', stats:{ 'Quantity':'12','Displacement':'4,770 tonnes','Speed':'29 knots','Missiles':'Harpoon, Sea Sparrow' }}
+    ],
+    nuclearWeapons:[{ name:'No Nuclear Weapons', type:'Non-Nuclear', description:'Canada is non-nuclear; hosted US nuclear weapons until 1984.', stats:{ 'Status':'Non-nuclear NPT member','History':'Removed US weapons 1984' }}],
+    warWeapons:[{ name:'LAV 6.0', type:'Light Armored Vehicle', description:'Upgraded Canadian 8x8 LAV with 30mm turret.', stats:{ 'Weight':'31 tonnes','Armament':'30mm M242','Speed':'100 km/h','Quantity':'360' }}],
+    warVehicles:[{ name:'Leopard 2A4/2A6M CAN', type:'Main Battle Tank', description:'Canadian Leopard 2s; some transferred to Ukraine.', stats:{ 'Quantity':'82','Transferred to Ukraine':'8 Leopard 2A4','Status':'Active' }}],
+    other:[{ name:'CP-140 Aurora', type:'Maritime Patrol Aircraft', description:'Canada\'s primary ASW and maritime patrol aircraft.', stats:{ 'Quantity':'14','Range':'9,000 km','Sensors':'Multi-mode radar, sonobuoys','Status':'Upgraded' }}]
+  },
+
+  'EG': { name:'Egypt', iso2:'eg', tier:2,
+    warJets:[
+      { name:'Rafale F3R', type:'Multirole Fighter', description:'Egypt was the first export customer for Rafale; 54 ordered.', stats:{ 'Quantity':'54','Status':'Operational','First export':'2015','Weapons':'SCALP-EG, Meteor' }}
+    ],
+    warShips:[
+      { name:'Mistral-class LHD', type:'Amphibious Assault Ship', description:'Two French Mistral ships acquired by Egypt after France cancelled Russian sale.', stats:{ 'Quantity':'2','Displacement':'21,300 tonnes','Aircraft':'16 helicopters','Sold by':'France (originally for Russia)' }}
+    ],
+    nuclearWeapons:[{ name:'No Nuclear Weapons', type:'Non-Nuclear', description:'Egypt is non-nuclear; under construction with Russian El Dabaa NPP.', stats:{ 'Status':'Non-nuclear','NPP':'El Dabaa (Russian-built)' }}],
+    warWeapons:[{ name:'M1A1 Abrams (locally assembled)', type:'Main Battle Tank', description:'Egypt assembles M1A1 Abrams under US license; largest Abrams fleet outside USA.', stats:{ 'Quantity':'1,360','Assembly':'Local (KADDB)','Status':'Active' }}],
+    warVehicles:[{ name:'BMP-1/2', type:'Infantry Fighting Vehicle', description:'Large fleet of Soviet-era IFVs in Egyptian service.', stats:{ 'Quantity':'1,000+','Status':'Active','Origin':'Soviet/Russian' }}],
+    other:[{ name:'S-300VM Antey-2500', type:'Air Defense System', description:'Russian S-300VM anti-ballistic missile system.', stats:{ 'Range':'200 km','Targets':'BM, cruise missiles, aircraft','Status':'Operational' }}]
+  },
+
+  'AE': { name:'UAE', iso2:'ae', tier:2,
+    warJets:[
+      { name:'F-16E/F Block 60 Desert Falcon', type:'Advanced Multirole Fighter', description:'The most advanced F-16 ever built; better than US Air Force F-16C/Ds.', stats:{ 'Quantity':'80','Avionics':'APG-80 AESA, JHMCS','Range':'Extended with CFTs','Status':'Operational' }},
+      { name:'Rafale F4', type:'Multirole Fighter', description:'UAE ordered 80 Rafale F4s after pulling out of F-35 deal.', stats:{ 'Ordered':'80','Status':'Deliveries 2024+','Weapons':'Meteor, SCALP' }}
+    ],
+    warShips:[
+      { name:'Baynunah-class Corvette', type:'Missile Corvette', description:'Domestically built corvette with Exocet and RAM missiles.', stats:{ 'Displacement':'915 tonnes','Speed':'35 knots','Missiles':'Exocet MM40, RAM','Built':'UAE' }}
+    ],
+    nuclearWeapons:[{ name:'No Nuclear Weapons', type:'Non-Nuclear', description:'UAE operates civilian nuclear power; non-nuclear weapons state.', stats:{ 'Status':'Non-nuclear','Barakah NPP':'4 Korean-built reactors, operational' }}],
+    warWeapons:[{ name:'Leclerc (UAE variant)', type:'Main Battle Tank', description:'UAE operates Leclerc MBTs with desert cooling and additional armor.', stats:{ 'Quantity':'388','Modifications':'Desert kit, additional armor','Status':'Active' }}],
+    warVehicles:[{ name:'BMP-3 (UAE)', type:'Infantry Fighting Vehicle', description:'UAE is largest non-CIS operator of the BMP-3.', stats:{ 'Quantity':'600+','Armament':'100mm + 30mm','Status':'Active' }}],
+    other:[{ name:'THAAD System', type:'Ballistic Missile Defense', description:'UAE became first export THAAD customer.', stats:{ 'Status':'Operational','Missiles':'144','Intercept altitude':'150 km' }}]
+  },
+
+  'ID': { name:'Indonesia', iso2:'id', tier:3,
+    warJets:[{ name:'Rafale F3R', type:'Multirole Fighter', description:'Indonesia ordered 42 Rafales in 2022.', stats:{ 'Ordered':'42','Delivery':'2026+','Role':'Replacing F-5/Hawk' }}],
+    warShips:[{ name:'FREMM Frigate (future)', type:'Guided Missile Frigate', description:'Indonesia considering FREMM-type frigates for navy modernization.', stats:{ 'Status':'Evaluation','Displacement':'6,000 tonnes est.' }}],
+    nuclearWeapons:[{ name:'No Nuclear Weapons', type:'Non-Nuclear', description:'Indonesia is non-nuclear NPT member.', stats:{ 'Status':'Non-nuclear' }}],
+    warWeapons:[{ name:'Caesar 155mm', type:'Self-Propelled Howitzer', description:'Indonesia ordered 36 Caesar howitzers from France.', stats:{ 'Ordered':'36','Range':'40 km','Status':'In delivery' }}],
+    warVehicles:[{ name:'Harimau Medium Tank', type:'Medium Tank', description:'Indonesian-Turkish co-developed medium tank for archipelago warfare.', stats:{ 'Weight':'35 tonnes','Gun':'105mm','Developed with':'Turkey (FNSS)','Status':'In production' }}],
+    other:[{ name:'KFX/IFX Fighter (KF-21)', type:'5th-Gen Fighter (Co-development)', description:'Indonesia co-developing KF-21 Boramae with South Korea (18% share).', stats:{ 'Share':'18%','Planned quantity':'48','Status':'Co-development (payment disputes)' }}]
+  },
+
+  'VN': { name:'Vietnam', iso2:'vn', tier:3,
+    warJets:[{ name:'Su-30MK2', type:'Multirole Fighter', description:'Vietnam\'s frontline fighter; key for South China Sea deterrence.', stats:{ 'Quantity':'36','Speed':'Mach 2','Weapons':'Kh-31, Kh-59','Role':'Maritime strike' }}],
+    warShips:[{ name:'Gepard 3.9-class Frigate', type:'Guided Missile Frigate', description:'Russian-built frigates forming backbone of Vietnam\'s surface fleet.', stats:{ 'Quantity':'4','Displacement':'2,100 tonnes','Missiles':'Uran (Kh-35)','Speed':'28 knots' }}],
+    nuclearWeapons:[{ name:'No Nuclear Weapons', type:'Non-Nuclear', description:'Vietnam is non-nuclear NPT member.', stats:{ 'Status':'Non-nuclear' }}],
+    warWeapons:[{ name:'Bastion-P Coastal Defense', type:'Coastal Defense Missile', description:'Russian supersonic anti-ship missile system protecting coastline.', stats:{ 'Missile':'P-800 Oniks','Range':'600 km','Speed':'Mach 2.5','Role':'Anti-ship/coastal' }}],
+    warVehicles:[{ name:'T-90S', type:'Main Battle Tank', description:'Vietnam acquired 64 T-90S to modernize armored forces.', stats:{ 'Quantity':'64','Speed':'60 km/h','Gun':'125mm autoloader','Status':'Active' }}],
+    other:[{ name:'Kilo-class Submarine (Type 636)', type:'Conventional Submarine', description:'Six Improved Kilo submarines with "black hole" acoustic signature.', stats:{ 'Quantity':'6','Missiles':'Kalibr-PL','Nickname':'Black Hole submarine','Status':'Operational' }}]
+  },
+
+  'NG': { name:'Nigeria', iso2:'ng', tier:3,
+    warJets:[{ name:'JF-17 Thunder', type:'Multirole Fighter', description:'Nigeria ordered JF-17s from Pakistan/China.', stats:{ 'Ordered':'3','Role':'Light strike/multirole','Status':'Delivered' }}],
+    warShips:[{ name:'NNS Thunder (P18N-class)', type:'OPV', description:'Nigerian offshore patrol vessels for Gulf of Guinea security.', stats:{ 'Displacement':'600 tonnes','Speed':'24 knots','Role':'Patrol/anti-piracy' }}],
+    nuclearWeapons:[{ name:'No Nuclear Weapons', type:'Non-Nuclear', description:'Nigeria is non-nuclear NPT member.', stats:{ 'Status':'Non-nuclear' }}],
+    warWeapons:[{ name:'M60A3 Patton', type:'Main Battle Tank', description:'Aging M60 tanks in Nigerian service.', stats:{ 'Quantity':'100+','Status':'Aging','Origin':'USA' }}],
+    warVehicles:[{ name:'Otokar Cobra II', type:'Armored Personnel Carrier', description:'Turkish-built APCs for Nigerian Army.', stats:{ 'Origin':'Turkey','Role':'Internal security/peacekeeping','Armament':'12.7mm HMG' }}],
+    other:[{ name:'Super Tucano A-29', type:'Light Attack Aircraft', description:'US-supplied A-29 Super Tucano for counter-insurgency vs. Boko Haram.', stats:{ 'Quantity':'6','Role':'COIN/close air support','Weapons':'Rockets, bombs','Status':'Operational' }}]
+  },
+
+  'ZA': { name:'South Africa', iso2:'za', tier:3,
+    warJets:[{ name:'Gripen C/D', type:'Multirole Fighter', description:'SAAF operates Gripens as primary fighter.', stats:{ 'Quantity':'26','Status':'Active','Weapons':'IRIS-T, Darter' }}],
+    warShips:[{ name:'Valour-class Frigate', type:'Guided Missile Frigate', description:'South Africa\'s most capable warship.', stats:{ 'Quantity':'4','Displacement':'3,590 tonnes','Missiles':'Umkhonto SAM','Speed':'28 knots' }}],
+    nuclearWeapons:[{ name:'Former Nuclear Power', type:'Denuclearized', description:'South Africa voluntarily dismantled 6 nuclear weapons in 1989 — the only country to independently develop and then voluntarily dismantle nuclear weapons.', stats:{ 'Former weapons':'6','Dismantled':'1989','Status':'Non-nuclear (NPT member)','Unique':'Only self-denuclearized state' }}],
+    warWeapons:[{ name:'Rooikat Armored Car', type:'Wheeled Tank Destroyer', description:'South African 8x8 wheeled armored vehicle with 76mm gun.', stats:{ 'Weight':'28 tonnes','Gun':'76mm GT-4','Speed':'120 km/h','Role':'Reconnaissance/fire support' }}],
+    warVehicles:[{ name:'Badger IFV', type:'Infantry Fighting Vehicle', description:'South Africa\'s next-gen IFV replacing Ratel; MBDA turret.', stats:{ 'Status':'In production','Armament':'30mm CPWS','Crew':'3 + 8' }}],
+    other:[{ name:'Denel G6 Rhino', type:'Self-Propelled Howitzer', description:'South African 155mm wheeled SPH, exported to Middle East.', stats:{ 'Caliber':'155mm','Range':'40 km','Speed':'90 km/h','Exports':'UAE, Oman' }}]
+  },
+
+  'AR': { name:'Argentina', iso2:'ar', tier:3,
+    warJets:[{ name:'JF-17 Thunder Block III', type:'Multirole Fighter', description:'Argentina signed deal for JF-17 to replace aging Skyhawks.', stats:{ 'Ordered':'24','Status':'Deal signed 2023','Replacing':'A-4 Skyhawk' }}],
+    warShips:[{ name:'MEKO 360-class Destroyer', type:'Destroyer', description:'Argentine destroyers originally built in Germany.', stats:{ 'Quantity':'4','Displacement':'3,800 tonnes','Speed':'30 knots','Age':'1970s-80s' }}],
+    nuclearWeapons:[{ name:'No Nuclear Weapons', type:'Non-Nuclear', description:'Argentina had a clandestine nuclear program but joined NPT in 1995.', stats:{ 'Status':'Non-nuclear NPT member','History':'Abandoned program 1990s' }}],
+    warWeapons:[{ name:'TAM Medium Tank', type:'Medium Tank', description:'Argentina\'s indigenous medium tank based on Marder IFV hull.', stats:{ 'Weight':'30.5 tonnes','Gun':'105mm rifled','Status':'Active','Quantity':'200+' }}],
+    warVehicles:[{ name:'VCTP APC', type:'Infantry Fighting Vehicle', description:'Argentina\'s IFV based on TAM chassis.', stats:{ 'Weight':'25 tonnes','Armament':'20mm autocannon','Amphibious':'No','Speed':'75 km/h' }}],
+    other:[{ name:'Malvinas Legacy', type:'Historical Conflict Note', description:'The 1982 Falklands/Malvinas War shaped Argentine military doctrine and procurement.', stats:{ 'War':'1982 Falklands','Result':'UK victory','Impact':'Shaped procurement priorities' }}]
+  }
+};
+
+// ═══════════════════════════════════════════
+// ISO NUMERIC → ISO2 MAPPING (D3 uses numeric)
+// ═══════════════════════════════════════════
+const ISO_NUM_TO_ALPHA2 = {
+  '004':'AF','008':'AL','012':'DZ','024':'AO','032':'AR','036':'AU','040':'AT','050':'BD',
+  '056':'BE','068':'BO','076':'BR','100':'BG','116':'KH','120':'CM','124':'CA','152':'CL',
+  '156':'CN','170':'CO','180':'CD','188':'CR','192':'CU','203':'CZ','208':'DK','218':'EC',
+  '818':'EG','231':'ET','246':'FI','250':'FR','276':'DE','288':'GH','300':'GR','320':'GT',
+  '324':'GN','332':'HT','340':'HN','348':'HU','356':'IN','360':'ID','364':'IR','368':'IQ',
+  '376':'IL','380':'IT','388':'JM','392':'JP','400':'JO','398':'KZ','404':'KE','410':'KR',
+  '408':'KP','414':'KW','418':'LA','422':'LB','434':'LY','484':'MX','504':'MA','508':'MZ',
+  '104':'MM','516':'NA','524':'NP','528':'NL','558':'NI','566':'NG','578':'NO','586':'PK',
+  '591':'PA','600':'PY','604':'PE','608':'PH','616':'PL','620':'PT','630':'PR','634':'QA',
+  '642':'RO','643':'RU','682':'SA','686':'SN','694':'SL','706':'SO','710':'ZA','724':'ES',
+  '144':'LK','729':'SD','752':'SE','756':'CH','760':'SY','762':'TJ','764':'TH','780':'TT',
+  '788':'TN','792':'TR','800':'UG','804':'UA','784':'AE','826':'GB','840':'US','858':'UY',
+  '860':'UZ','862':'VE','704':'VN','887':'YE','716':'ZW','012':'DZ','031':'AZ','051':'AM',
+  '070':'BA','860':'UZ','426':'LS','454':'MW','466':'ML','562':'NE','480':'MU','450':'MG',
+  '478':'MR','646':'RW','686':'SN','706':'SO','834':'TZ','894':'ZM'
+};
+
+// Conflict ISO2 codes
+const CONFLICT_COUNTRIES = new Set(CONFLICTS.map(c => c.country));
+
+// Military country ISO2
+const MILITARY_COUNTRIES = new Map(Object.entries(MILITARY).map(([k,v]) => [v.iso2.toUpperCase(), v]));
+
+// ═══════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════
+let currentMode = 'conflict';
+let currentArsenalCountry = null;
+let currentWeaponCategory = 'warWeapons';
+const WEAPON_CATS = ['warWeapons','warVehicles','warJets','warShips','nuclearWeapons','other'];
+const CAT_LABELS = { warWeapons:'War Weapons', warVehicles:'Vehicles', warJets:'Jets', warShips:'Ships', nuclearWeapons:'Nuclear', other:'Other' };
+
+// ═══════════════════════════════════════════
+// MODE TOGGLE
+// ═══════════════════════════════════════════
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('btn-conflict').classList.toggle('active', mode === 'conflict');
+  document.getElementById('btn-arsenal').classList.toggle('active', mode === 'arsenal');
+  document.getElementById('map-legend').classList.toggle('visible', mode === 'arsenal');
+  closeDrawer();
+  closeArsenal();
+  renderMap();
+}
+
+// ═══════════════════════════════════════════
+// MAP RENDERING
+// ═══════════════════════════════════════════
+let worldData = null;
+const svg = d3.select('#map-svg');
+let g = svg.append('g');
+let projection, pathGen;
+
+function initMap(world) {
+  worldData = world;
+  const container = document.getElementById('map-container');
+  const W = container.clientWidth;
+  const H = container.clientHeight;
+
+  projection = d3.geoNaturalEarth1()
+    .scale(W / 6.4)
+    .translate([W / 2, H / 2]);
+  pathGen = d3.geoPath().projection(projection);
+
+  // Zoom
+  const zoom = d3.zoom().scaleExtent([1, 8]).on('zoom', e => g.attr('transform', e.transform));
+  svg.call(zoom);
+
+  renderMap();
+
+  // Resize
+  window.addEventListener('resize', () => {
+    const W2 = container.clientWidth, H2 = container.clientHeight;
+    projection.scale(W2 / 6.4).translate([W2 / 2, H2 / 2]);
+    pathGen = d3.geoPath().projection(projection);
+    renderMap();
+  });
+}
+
+function getCountryColor(iso2) {
+  if (!iso2) return '#2A2A2A';
+  if (currentMode === 'conflict') {
+    return CONFLICT_COUNTRIES.has(iso2.toUpperCase()) ? '#FF2020' : '#3A3A3A';
+  } else {
+    const mil = MILITARY_COUNTRIES.get(iso2.toUpperCase());
+    if (!mil) return '#2A2A2A';
+    if (mil.tier === 1) return '#FFD700';
+    if (mil.tier === 2) return '#FF8C00';
+    return '#5A5A5A';
+  }
+}
+
+function renderMap() {
+  if (!worldData) return;
+  const countries = topojson.feature(worldData, worldData.objects.countries).features;
+
+  g.selectAll('.country').remove();
+
+  g.selectAll('.country')
+    .data(countries)
+    .join('path')
+    .attr('class', d => {
+      const iso2 = ISO_NUM_TO_ALPHA2[String(d.id).padStart(3,'0')];
+      let cls = 'country';
+      if (currentMode === 'conflict' && iso2 && CONFLICT_COUNTRIES.has(iso2.toUpperCase())) {
+        cls += ' conflict-country';
+      }
+      return cls;
+    })
+    .attr('d', pathGen)
+    .attr('fill', d => {
+      const iso2 = ISO_NUM_TO_ALPHA2[String(d.id).padStart(3,'0')];
+      return getCountryColor(iso2);
+    })
+    .on('mousemove', (event, d) => showTooltip(event, d))
+    .on('mouseleave', hideTooltip)
+    .on('click', (event, d) => handleCountryClick(event, d));
+}
+
+// ═══════════════════════════════════════════
+// TOOLTIP
+// ═══════════════════════════════════════════
+const tooltip = document.getElementById('tooltip');
+
+function showTooltip(event, d) {
+  const iso2 = ISO_NUM_TO_ALPHA2[String(d.id).padStart(3,'0')];
+  if (!iso2) return;
+
+  let name = '', summary = '', showFlag = false;
+
+  if (currentMode === 'conflict') {
+    const c = CONFLICTS.find(c => c.country.toUpperCase() === iso2.toUpperCase());
+    if (!c) return;
+    name = c.name;
+    summary = c.summary;
+    showFlag = true;
+    document.getElementById('tt-flag').src = `https://flagcdn.com/w80/${iso2.toLowerCase()}.png`;
+    document.getElementById('tt-flag').style.display = 'block';
+  } else {
+    const mil = MILITARY_COUNTRIES.get(iso2.toUpperCase());
+    if (!mil) return;
+    name = mil.name;
+    summary = `Military Tier ${mil.tier} — Click to view arsenal`;
+    showFlag = true;
+    document.getElementById('tt-flag').src = `https://flagcdn.com/w80/${iso2.toLowerCase()}.png`;
+    document.getElementById('tt-flag').style.display = 'block';
+  }
+
+  document.getElementById('tt-name').textContent = name;
+  document.getElementById('tt-summary').textContent = summary;
+
+  const x = event.clientX + 14;
+  const y = event.clientY - 10;
+  tooltip.style.left = Math.min(x, window.innerWidth - 260) + 'px';
+  tooltip.style.top = Math.min(y, window.innerHeight - 120) + 'px';
+  tooltip.classList.add('visible');
+}
+
+function hideTooltip() {
+  tooltip.classList.remove('visible');
+}
+
+// ═══════════════════════════════════════════
+// COUNTRY CLICK
+// ═══════════════════════════════════════════
+function handleCountryClick(event, d) {
+  event.stopPropagation();
+  const iso2 = ISO_NUM_TO_ALPHA2[String(d.id).padStart(3,'0')];
+  if (!iso2) return;
+
+  if (currentMode === 'conflict') {
+    const c = CONFLICTS.find(c => c.country.toUpperCase() === iso2.toUpperCase());
+    if (c) openDrawer(c);
+  } else {
+    const mil = MILITARY_COUNTRIES.get(iso2.toUpperCase());
+    if (mil) openArsenal(mil, iso2);
+  }
+}
+
+// ═══════════════════════════════════════════
+// CONFLICT DRAWER
+// ═══════════════════════════════════════════
+function openDrawer(conflict) {
+  document.getElementById('drawer-flag').src = `https://flagcdn.com/w80/${conflict.country.toLowerCase()}.png`;
+  document.getElementById('drawer-name').textContent = conflict.name;
+  document.getElementById('drawer-desc').textContent = conflict.description;
+  document.getElementById('drawer-parties').textContent = conflict.parties;
+  document.getElementById('drawer-wiki').href = conflict.wikipediaUrl;
+
+  const meta = document.getElementById('drawer-meta');
+  meta.innerHTML = `
+    <div class="meta-tag">Since <span>${conflict.startYear}</span></div>
+    <div class="meta-tag">Country <span>${conflict.country}</span></div>
+  `;
+  document.getElementById('conflict-drawer').classList.add('open');
+}
+
+function closeDrawer() {
+  document.getElementById('conflict-drawer').classList.remove('open');
+}
+
+// ═══════════════════════════════════════════
+// ARSENAL OVERLAY
+// ═══════════════════════════════════════════
+function openArsenal(mil, iso2) {
+  currentArsenalCountry = mil;
+  document.getElementById('arsenal-flag').src = `https://flagcdn.com/w80/${iso2.toLowerCase()}.png`;
+  document.getElementById('arsenal-country-name').textContent = mil.name;
+  const badge = document.getElementById('arsenal-tier-badge');
+  badge.textContent = `TIER ${mil.tier}`;
+  badge.className = `tier-badge tier-${mil.tier}`;
+
+  // Build tabs
+  const tabsEl = document.getElementById('weapon-tabs');
+  tabsEl.innerHTML = '';
+  WEAPON_CATS.forEach(cat => {
+    const btn = document.createElement('button');
+    btn.className = 'weapon-tab' + (cat === 'warWeapons' ? ' active' : '');
+    btn.textContent = CAT_LABELS[cat];
+    btn.onclick = () => switchWeaponCategory(cat);
+    tabsEl.appendChild(btn);
+  });
+
+  currentWeaponCategory = 'warWeapons';
+  renderWeaponGrid('warWeapons');
+  document.getElementById('arsenal-overlay').classList.add('open');
+}
+
+function switchWeaponCategory(cat) {
+  currentWeaponCategory = cat;
+  document.querySelectorAll('.weapon-tab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.weapon-tab')[WEAPON_CATS.indexOf(cat)].classList.add('active');
+  renderWeaponGrid(cat);
+}
+
+function renderWeaponGrid(cat) {
+  const grid = document.getElementById('weapon-grid');
+  const weapons = currentArsenalCountry[cat] || [];
+  if (!weapons.length) {
+    grid.innerHTML = '<div class="no-data">No data available for this category.</div>';
+    return;
+  }
+  grid.innerHTML = weapons.map((w, i) => `
+    <div class="weapon-card" onclick="openWeaponHero(${i})">
+      <div class="wc-type">${w.type}</div>
+      <div class="wc-name">${w.name}</div>
+      <div class="wc-desc">${w.description.substring(0, 80)}${w.description.length > 80 ? '...' : ''}</div>
+    </div>
+  `).join('');
+}
+
+function closeArsenal() {
+  document.getElementById('arsenal-overlay').classList.remove('open');
+}
+
+function handleOverlayClick(e) {
+  if (e.target === document.getElementById('arsenal-overlay')) closeArsenal();
+}
+
+// ═══════════════════════════════════════════
+// WEAPON HERO
+// ═══════════════════════════════════════════
+function openWeaponHero(index) {
+  const w = currentArsenalCountry[currentWeaponCategory][index];
+  document.getElementById('hero-type').textContent = w.type;
+  document.getElementById('hero-name').textContent = w.name;
+  document.getElementById('hero-desc').textContent = w.description;
+
+  const statsEl = document.getElementById('hero-stats');
+  statsEl.innerHTML = Object.entries(w.stats).map(([k, v]) => `
+    <div class="stat-item">
+      <div class="stat-key">${k}</div>
+      <div class="stat-val">${v}</div>
+    </div>
+  `).join('');
+
+  document.getElementById('weapon-hero').classList.add('open');
+}
+
+function closeHero() {
+  document.getElementById('weapon-hero').classList.remove('open');
+}
+
+function handleHeroBackdrop(e) {
+  if (e.target === document.getElementById('weapon-hero')) closeHero();
+}
+
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
+fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
+  .then(r => r.json())
+  .then(world => initMap(world))
+  .catch(err => {
+    console.error('Failed to load map topology:', err);
+    document.getElementById('map-container').innerHTML =
+      '<div style="color:#FF2020;text-align:center;padding:40px;font-family:Courier Prime">⚠ Failed to load world map. Check your internet connection.</div>';
+  });
+
+// Close drawer on map click
+document.getElementById('map-svg').addEventListener('click', () => closeDrawer());
+</script>
+</body>
+</html>
